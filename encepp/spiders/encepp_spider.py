@@ -1,0 +1,461 @@
+# NOT DEFAULT
+# Define your spiders here
+#
+# See documentation in:
+# https://docs.scrapy.org/en/latest/topics/spiders.html
+
+from typing import List, Generator
+from enum import Enum
+import re
+
+from scrapy import spiders, http, selector, signals
+from tqdm import tqdm
+
+from encepp.items import Study
+
+
+class RMP(Enum):
+    not_applicable = 1
+    EU_RPM_category_1 = 2
+    EU_RPM_category_2 = 3
+    EU_RPM_category_3 = 4
+    non_EU_RPM = 5
+
+
+class EU_PAS_Extractor(spiders.Spider):
+    '''
+    Parent Class of a Scrapy Spider which extracts data from the EU Pas Register.
+    '''
+
+    # Spider Settings
+    # name is used to start a spider with the scrapy cmd-tool
+    name = 'encepp'
+    # custom_settings contains own settings, but can also override the values in settings.py
+    custom_settings = {
+        'PROGRESS_LOGGING': False,
+        'FILTER_STUDIES': False
+    }
+
+    # URLS and headers
+    base_url = 'https://www.encepp.eu'
+    query_url = f'{base_url}/encepp/studySearch.htm'
+    query_headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': query_url,
+        'Origin': base_url,
+    }
+
+    # Filter Settings
+    template_string = 'studyCriteria.resourceLabel={eu_pas_register_number}&studyCriteria.studyRMP={risk_managment_plan}'
+
+    # RegEx is used to remove the sessionid in the urls => make scraper less visible
+    session_regex = re.compile(r'jsessionid=.+\?')
+
+    def __init__(self, progress_logging=False, filter_studies=False, rmp_category=None, eupas_id=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.custom_settings.update({
+            'PROGRESS_LOGGING': progress_logging,
+            'FILTER_STUDIES': filter_studies
+        })
+        self.rmp_query_val = rmp_category.value if rmp_category else ''
+        self.eupas_id_query_val = eupas_id or ''
+
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super().from_crawler(crawler, *args, **kwargs)
+        crawler.signals.connect(spider.idle, signals.spider_idle)
+        return spider
+
+    def start_requests(self):
+        '''
+        Starts the scraping process by requesting a query for all (or a filtered subset of all) PAS.
+        '''
+        if self.custom_settings.get('FILTER_STUDIES'):
+            query = self.template_string.format(
+                risk_managment_plan=self.rmp_query_val,
+                eu_pas_register_number=self.eupas_id_query_val
+            )
+        else:
+            query = None
+
+        print('Starting Extraction')
+        yield http.Request(
+            url=self.query_url,
+            method='POST',
+            headers=self.query_headers,
+            body=query,
+            callback=self.parse,
+            meta={
+                'download_timeout': 10 * 60,
+            }
+        )
+
+    def parse(self, response: http.TextResponse):
+        '''Parses the table of the queried studies and follows the urls to the respective study details by parsing each table row seperatly.
+
+        @url https://www.encepp.eu/encepp/studySearch.htm
+        @postEncoded studyCriteria.resourceLabel=4&studyCriteria.studyRMP=2
+        @returns requests
+        @returns items 0 0
+        '''
+        main_content = response.css('div.insidecentre')[0]
+        n_studies = int(main_content.xpath('.//h5/text()').get().split()[0])
+        self.crawler.stats.set_value('item_expected_count', n_studies)
+        print(f'{n_studies} studies will be extracted.')
+
+        if self.custom_settings.get('PROGRESS_LOGGING'):
+            self.pbar = tqdm(
+                total=n_studies,
+                leave=False,
+                desc='Scraping Progress',
+                unit='studies',
+                colour='green',
+            )
+
+        for row in main_content.xpath('.//table/tr')[1:]:
+            yield self.parse_study(data_row=row)
+
+    def parse_study(self, data_row: selector.Selector):
+        '''
+        Extracts relevant study data from a table row and follows an extracted url to get more details about the respective study.
+        '''
+        study = Study()
+        study['state'] = data_row.xpath('./td[1]//text()').get()
+        study['eu_pas_register_number'] = data_row.xpath(
+            './td[2]//text()').get()
+        study['title'] = data_row.xpath('./td[3]//text()').get()
+        study['update_date'] = data_row.xpath('./td[4]//text()').get().strip()
+
+        url = self.base_url + data_row.xpath('./td[3]//a/@href').get()
+        url = self.session_regex.sub('?', url)
+        study['url'] = url
+        return http.Request(url=url, callback=self.parse_details, cb_kwargs=dict(study=study))
+
+    def parse_details(self, response: http.TextResponse, study: Study):
+        ''' Parses the study details from all four tabs. Each tab will be processed by it's own method.
+
+        @url https://www.encepp.eu/encepp/viewResource.htm?id=50574
+        @cb_kwargs {"study": {"eu_pas_register_number": "EUPAS32302"}}
+        @returns requests 0 0
+        @returns items 1 1
+        '''
+        if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):
+            self.pbar.update()
+
+        study['registration_date'] = response.css(
+            'div.insidecentre')[0].xpath('./div[2]/span[3]/text()[normalize-space()]').get().strip()
+        self.parse_admin_details(details=response.xpath(
+            './/*[@id="1"]')[0], study=study)
+        self.parse_target_details(details=response.xpath(
+            './/*[@id="2"]')[0], study=study)
+        self.parse_method_details(details=response.xpath(
+            './/*[@id="3"]')[0], study=study)
+        self.parse_document_details(
+            details=response.xpath('.//*[@id="4"]')[0], study=study)
+        return study
+
+    def get_block_from_details(
+        self,
+        details: selector.Selector,
+        index: int,
+        block_element: str = 'div',
+        seperator_element: str = 'h5'
+    ) -> selector.SelectorList:
+        '''
+        Returns a SelectorList only containing block_elements, by finding blocks of block_elements following a single seperator_element.
+        '''
+        return details.xpath(f'./{block_element}[count(preceding-sibling::{seperator_element}/following-sibling::{block_element}[1]) = {index}]')
+
+    def get_multiblock_from_details(
+        self,
+        details: selector.Selector,
+        index: int,
+        block_element: str = 'div',
+        seperator_element: str = 'h5',
+        filter_element: str = 'br',
+        offset: int = 0,
+        every_nth: int = 1
+    ) -> Generator[selector.SelectorList, None, None]:
+        '''
+        Returns a SelectorList only containing block_elements, by finding blocks of block_elements and filter_element following seperator_element.
+        Then it generates smaller blocks by cutting it in chunks using filter_element and python slices.
+        '''
+        block = details.xpath(
+            f'./*[self::{block_element} or self::{filter_element}][count(preceding-sibling::{seperator_element}/following-sibling::*[not(self::{seperator_element})][1]) = {index}]')
+        boundary = [i for i, element in enumerate(
+            block) if element.xpath(f'./self::{filter_element}')] + [len(block)]
+
+        start = offset if offset == 0 else boundary[offset - 1] + 1
+        for end in boundary[offset::every_nth]:
+            yield block[start: end]
+            start = end + 1
+
+    def parse_admin_details(self, details: selector.Selector, study: Study):
+        '''
+        Parses the details of the first tab: "Administrative Details"
+        '''
+        # First Block
+        if acronym := details.xpath('./div[3]/span[2]//text()').get():
+            study['acronym'] = acronym
+        study['study_type'] = details.xpath('./div[4]/span[2]//text()').get()
+        study['requested_by_regulator'] = details.xpath(
+            './div[6]/span[2]//text()').get()
+        if rpm := details.xpath('./div[7]/span[2]//text()').get().strip():
+            study['risk_managment_plan'] = rpm
+        if rpn := details.xpath('./div[8]/span[2]//text()').get():
+            study['regulatory_procedure_number'] = rpn
+
+        # Second Block
+        block = self.get_block_from_details(details, index=2)
+        if len(block) == 2:
+            study['centre_name'] = block[0].xpath('./span[2]//text()').get()
+            study['centre_location'] = block[1].xpath(
+                './span[2]//text()').get()
+        elif len(block) == 4:
+            study['centre_name_of_investigator'] = block[0].xpath(
+                './span[2]//text()').get()
+            if organisation := block[2].xpath('./span[2]//text()').get():
+                study['centre_organisation'] = organisation
+        else:
+            self.logger.warning(
+                'Found unexpected "Coordinating study entity" table format in the following study:\n %s', study['url'])
+
+        # Fourth Block
+        block = self.get_block_from_details(details, index=4)
+        study['collaboration_with_research_network'] = block[0].xpath(
+            './/text()[normalize-space()]').get()
+
+        # Sixth Block
+        block = self.get_block_from_details(details, index=6)
+        study['country_type'] = block[0].xpath(
+            './/text()[normalize-space()]').get()
+        study['countries'] = [country.strip() for country in block[1:].xpath(
+            './/text()[normalize-space()]').getall() if country.strip()]
+
+        def extract_from_table(table: selector.SelectorList, sorted_fields: List[str], caster=[str, str]):
+            other = [], []
+            for i, row in enumerate(table[1:]):
+                if 2*i + 1 < len(sorted_fields):
+                    if first_value := row.xpath('./span[2]//text()').get():
+                        study[sorted_fields[2*i]] = caster[0](first_value)
+                    if second_value := row.xpath('./span[3]//text()').get():
+                        study[sorted_fields[2*i + 1]] = caster[1](second_value)
+                else:
+                    if first_value := row.xpath('./span[2]//text()').get():
+                        other[0].append(caster[0](first_value))
+                    if second_value := row.xpath('./span[3]//text()').get():
+                        other[1].append(caster[1](second_value))
+            return other
+
+        # Seventh Block
+        block = self.get_block_from_details(details, index=7)
+        extract_from_table(table=block, sorted_fields=[
+            'funding_contract_date_planed',
+            'funding_contract_date_actual',
+            'data_collection_date_planed',
+            'data_collection_date_actual',
+            'data_analysis_date_planed',
+            'data_analysis_date_actual',
+            'iterim_report_date_planed',
+            'iterim_report_date_actual',
+            'final_study_date_planed',
+            'final_study_date_actual'
+        ])
+
+        # Eight block
+        block = self.get_block_from_details(details, index=8)
+        other_names, other_percentage = extract_from_table(table=block, sorted_fields=[
+            'funding_companies_names',
+            'funding_companies_percentage',
+            'funding_charities_names',
+            'funding_charities_percentage',
+            'funding_government_body_names',
+            'funding_government_body_percentage',
+            'funding_research_councils_names',
+            'funding_research_councils_percentage',
+            'funding_eu_scheme_names',
+            'funding_eu_scheme_percentage'
+        ], caster=[str, int])
+        if other_names:
+            study['funding_other_names'] = other_names
+        if other_percentage:
+            study['funding_other_percentage'] = other_percentage
+
+    def parse_target_details(self, details: selector.Selector, study: Study):
+        '''
+        Parses the details of the second tab: "Targets of the Study"
+        '''
+        # First Block
+        block = self.get_block_from_details(details, index=1)
+        substance_atc = set()
+        substance_inn = set()
+        for row in block:
+            spans = row.xpath('./span/text()')
+            for i in range(0, len(spans), 2):
+                if 'Substance INN' in spans[i].get():
+                    substance_inn.add(spans[i + 1].get())
+                elif 'Substance class' in spans[i].get():
+                    substance_atc.add(spans[i + 1].get())
+
+        # CAVE: Have to convert set to list for json and jsonschema to work
+        if substance_atc:
+            study['substance_atc'] = sorted(list(substance_atc))
+        if substance_inn:
+            study['substance_inn'] = sorted(list(substance_inn))
+
+        # Second Block
+        block = self.get_block_from_details(details, index=2)
+        study['medical_conditions'] = [block[0].xpath('./span[2]/text()').get()] + [
+            row.xpath('./text()').get('').strip() for row in block[1:] if row.xpath('./text()[normalize-space()]').get()]
+
+        # Sometimes there are Additional Medical Condition(s) as seen in:
+        # https://www.encepp.eu/encepp/viewResource.htm;?id=48872
+        # https://www.encepp.eu/encepp/viewResource.htm;?id=49962
+        # https://www.encepp.eu/encepp/viewResource.htm;?id=47071
+        if block[-1].xpath('./span[1]').re_first('Additional Medical Condition'):
+            study['additional_medical_conditions'] = block[-1].xpath(
+                './span[2]//text()[normalize-space()]').get()
+
+        # Third Block
+        # CAVE: WHENEVER MAP IS USED => Map object has to be turned into list for json and jsonschema to work
+        multiblock = self.get_multiblock_from_details(
+            details, index=3, filter_element='br', offset=1, every_nth=2)
+        if age_block := next(multiblock, None):
+            study['age_population'] = list(map(lambda x: x.strip(), age_block.xpath(
+                './text()[normalize-space()]').getall()))
+
+            if sex_block := next(multiblock, None):
+                study['sex_population'] = list(map(lambda x: x.strip(), sex_block.xpath(
+                    './text()[normalize-space()]').getall()))
+
+                if other_block := next(multiblock, None):
+                    study['other_population'] = list(map(lambda x: x.strip(), other_block.xpath(
+                        './text()[normalize-space()]').getall()))
+
+                    if next(multiblock, None):
+                        self.logger.warning(
+                            'Found additional population block in the following study:\n %s', study['url'])
+
+        # Fourth Block
+        block = self.get_block_from_details(details, index=4)
+        study['number_of_subjects'] = int(
+            block[0].xpath('./span[2]//text()').get())
+
+        # Fifth Block
+        block = self.get_block_from_details(details, index=5)
+        study['uses_established_data_source'] = block[0].xpath(
+            './span[2]//text()').get()
+
+        multiblock = self.get_multiblock_from_details(
+            details, index=5, filter_element='br', offset=1)
+        while category := next(multiblock, None):
+            if entries := next(multiblock, None):
+                if category.re_first('Data sources registered with ENCePP'):
+                    study['data_sources_registered_with_encepp'] = list(map(
+                        lambda x: x.strip(), entries.xpath('./a/text()[normalize-space()]').getall()))
+                elif category.re_first('Data sources not registered with ENCePP'):
+                    study['data_sources_not_registered_with_encepp'] = list(map(
+                        lambda x: x.strip(), entries.xpath('./text()[normalize-space()]').getall()))
+                elif category.re_first('Sources of data'):
+                    study['data_source_types'] = entries.xpath(
+                        './span//text()[normalize-space()]').getall()
+            else:
+                self.logger.warning(
+                    'Found unexpected empty data source category in the following study:\n %s', study['url'])
+
+    def parse_method_details(self, details: selector.Selector, study: Study):
+        '''
+        Parses the details of the third tab: "Methodological Aspects"
+        '''
+        # First Block
+        block = self.get_block_from_details(details, index=1)
+        study['scopes'] = list(map(
+            lambda x: x.strip(), block[1:-1].xpath('./text()[normalize-space()]').getall()))
+        study['primary_scope'] = block[-1].xpath('./span/text()').get()
+
+        # Second Block
+        block = self.get_block_from_details(details, index=2)
+        block = block.xpath('./self::*[.//b]')
+        study['primary_outcomes'] = list(filter(lambda x: x, [
+            block[0].xpath('./span[2]/text()').get(),
+            block[0].xpath('./following-sibling::*[1][self::br]/following-sibling::div[1]//text()[normalize-space()]').get()]))
+        study['secondary_outcomes'] = list(filter(lambda x: x, [
+            block[1].xpath('./span[2]/text()').get(),
+            block[1].xpath('./following-sibling::*[1][self::br]/following-sibling::div[1]//text()[normalize-space()]').get()]))
+
+        # Third Block
+        block = self.get_block_from_details(details, index=3)
+        study['study_design'] = list(map(lambda x: x.strip(), block[1:].xpath(
+            './text()[normalize-space()]').getall()))
+
+        # Fourth Block
+        block = self.get_block_from_details(details, index=4)
+        study['follow_up'] = block[0].xpath('./span[2]/text()').get()
+
+    def parse_document_details(self, details: selector.Selector, study: Study):
+        '''
+        Parses the details of the fourth tab: "Documents"
+        '''
+
+        # Second Block
+        block = self.get_block_from_details(details, index=2)
+        num_cells = len(block[0].xpath('./span'))
+        if num_cells < 4:
+            # num cells will be one if there aren't any urls
+            # num_cells should be 2, when only one url is expected, but sometimes there is an invisible third cell with an empty url
+            if protocol_url := block[0].xpath('./span[2]/a/@href').get():
+                study['protocol_document_url'] = protocol_url
+        elif num_cells == 4:
+            if protocol_url := block[0].xpath('./span[3]/a/@href').get():
+                study['protocol_document_url'] = protocol_url
+            study['latest_protocol_document_url'] = block[0].xpath(
+                './span[4]/a/@href').get()
+        else:
+            self.logger.warning(
+                'Found unexpected number of protocol document url cells in the following study:\n %s', study['url'])
+
+        # Third Block
+        block = self.get_block_from_details(details, index=3)
+        num_cells = len(block[0].xpath('./span'))
+        if num_cells < 4:
+            # num cells will be one if there aren't any urls
+            # num_cells should be 2, when only one url is expected, but sometimes there is an invisible third cell with an empty url
+            if result_url := block[0].xpath('./span[2]/a/@href').get():
+                study['result_document_url'] = result_url
+        elif num_cells == 4:
+            if result_url := block[0].xpath('./span[3]/a/@href').get():
+                study['result_document_url'] = result_url
+            study['latest_result_document_url'] = block[0].xpath(
+                './span[4]/a/@href').get()
+        else:
+            self.logger.warning(
+                'Found unexpected number of result document url cells in the following study:\n %s', study['url'])
+
+        if references := list(filter(lambda x: bool(x), block[2:].xpath('translate(.//a/@href, " ", "")').getall())):
+            study['references'] = references
+
+        block = self.get_multiblock_from_details(details, index=4, offset=2)
+        if other_documents := next(block, None):
+            if other_documents_url := other_documents.xpath('.//a/@href').getall():
+                study['other_documents_url'] = other_documents_url
+        else:
+            self.logger.warning(
+                'Could not find other document block in the following study:\n %s', study['url'])
+
+    def idle(self):
+        if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):
+            self.pbar.close()
+
+    def closed(self, reason: str):
+        match reason:
+            case 'finished':
+                print('Scraping finished successfully.')
+            case 'shutdown':
+                print('Scraping was stopped by user.')
+            case other:
+                print(f'Scraping finished with reason: {other}')
+        print(
+            f'Extraction finished in {self.crawler.stats.get_value("elapsed_time_seconds")} seconds.')

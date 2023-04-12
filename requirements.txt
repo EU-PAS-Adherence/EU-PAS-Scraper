@@ -1,0 +1,5 @@
+scrapy
+spidermon[monitoring,validation]
+jsonschema[format]
+tqdm
+openpyxl
