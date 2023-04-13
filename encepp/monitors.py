@@ -4,6 +4,7 @@
 # https://spidermon.readthedocs.io/en/latest/monitors.html
 
 from spidermon import Monitor, MonitorSuite, monitors
+
 from spidermon.contrib.scrapy.monitors import ItemCountMonitor, ItemValidationMonitor
 # from spidermon.contrib.scrapy.monitors import FieldCoverageMonitor
 from spidermon.contrib.scrapy.monitors import WarningCountMonitor, ErrorCountMonitor, CriticalCountMonitor

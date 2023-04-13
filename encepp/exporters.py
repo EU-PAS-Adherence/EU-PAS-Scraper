@@ -9,8 +9,8 @@
 
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
-from openpyxl.styles import Font
 from openpyxl.cell.cell import KNOWN_TYPES
+from openpyxl.styles import Font
 from scrapy.exporters import BaseItemExporter
 from scrapy.spiders import Spider
 

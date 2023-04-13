@@ -9,6 +9,10 @@
 
 import random
 
+# Custom output folder
+# OUTPUT_DIRECTORY = '../Output'
+OUTPUT_DIRECTORY = './output'
+
 BOT_NAME = None
 
 SPIDER_MODULES = ['encepp.spiders']
@@ -23,17 +27,18 @@ TWISTED_REACTOR = 'twisted.internet.asyncioreactor.AsyncioSelectorReactor'
 ##################################
 
 
-def random_ua(k=1):
+def random_ua():
     # Code provided by https://www.useragents.me/
     # returns a random useragent from the latest user agents strings list, weigted
     # according to observed prevalence
     ua_pct = {'ua': {'0': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36', '1': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 Edg/107.0.1418.42', '2': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:107.0) Gecko/20100101 Firefox/107.0', '3': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 Edg/107.0.1418.52', '4': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15', '5': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36', '6': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36', '7': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:107.0) Gecko/20100101 Firefox/107.0', '8': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:108.0) Gecko/20100101 Firefox/108.0', '9': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36 Edg/108.0.0.0', '10': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15', '11': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 Edg/107.0.1418.35', '12': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36', '13': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36', '14': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:106.0) Gecko/20100101 Firefox/106.0', '15': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36', '16': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36', '17': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36 Edg/102.0.1245.33', '18': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36', '19': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36', '20': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.71 Safari/537.36', '21': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 OPR/92.0.0.0', '22': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36', '23': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:102.0) Gecko/20100101 Firefox/102.0', '24': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 Edg/106.0.1370.52', '25': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 YaBrowser/22.11.0.2419 Yowser/2.5 Safari/537.36', '26': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 OPR/93.0.0.0',
                      '27': 'Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko', '28': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36 Edg/102.0.1245.39', '29': 'Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0', '30': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36', '31': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 Edg/107.0.1418.26', '32': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 YaBrowser/22.11.0.2424 Yowser/2.5 Safari/537.36', '33': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36 OPR/91.0.4516.106', '34': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.102 Safari/537.36 Edg/104.0.1293.63', '35': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.67 Safari/537.36', '36': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36', '37': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36 OPR/91.0.4516.106 (Edition GX-CN)', '38': 'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36', '39': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0', '40': 'Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; rv:11.0) like Gecko', '41': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36 Edg/104.0.1293.54', '42': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64; rv:107.0) Gecko/20100101 Firefox/107.0', '43': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0', '44': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.99 Safari/537.36', '45': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18362'}, 'pct': {'0': 34.4623200677, '1': 14.2252328535, '2': 7.7900084674, '3': 5.9271803556, '4': 4.5159469376, '5': 4.5159469376, '6': 3.6127575501, '7': 1.806378775, '8': 1.806378775, '9': 1.806378775, '10': 1.806378775, '11': 1.6934801016, '12': 1.4676827547, '13': 1.3547840813, '14': 1.3547840813, '15': 0.9031893875, '16': 0.9031893875, '17': 0.7902907141, '18': 0.7902907141, '19': 0.6773920406, '20': 0.6773920406, '21': 0.6773920406, '22': 0.4515946938, '23': 0.4515946938, '24': 0.3386960203, '25': 0.3386960203, '26': 0.3386960203, '27': 0.3386960203, '28': 0.3386960203, '29': 0.2257973469, '30': 0.2257973469, '31': 0.2257973469, '32': 0.2257973469, '33': 0.2257973469, '34': 0.2257973469, '35': 0.2257973469, '36': 0.2257973469, '37': 0.2257973469, '38': 0.2257973469, '39': 0.2257973469, '40': 0.2257973469, '41': 0.2257973469, '42': 0.2257973469, '43': 0.2257973469, '44': 0.2257973469, '45': 0.2257973469}}
-    return random.choices(list(ua_pct['ua'].values()), list(ua_pct['pct'].values()), k=k)
+    return random.choices(list(ua_pct['ua'].values()), list(ua_pct['pct'].values()))[0]
 
 
 # Crawl responsibly by identifying yourself on the user-agent
-USER_AGENT = random_ua()[0]
+USER_AGENT = random_ua()
+print(random_ua, __file__)
 ##################################
 
 ##################################
@@ -227,12 +232,12 @@ SPIDERMON_REPORT_TEMPLATE = 'reports/email/monitors/result.jinja'
 SPIDERMON_REPORT_CONTEXT = {
     'report_title': 'Encepp File Report'
 }
-SPIDERMON_REPORT_FILENAME = '../Output/report.html'
+SPIDERMON_REPORT_FILENAME = f'{OUTPUT_DIRECTORY}/report.html'
 
 # Custom ITEMCOMPARER Extension
 ITEMHISTORYCOMPARER_ENABLED = True
 ITEMHISTORYCOMPARER_JSON_INPUT_PATH = 'compare.json'
-ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH = '../Output/updates.json'
+ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH = f'{OUTPUT_DIRECTORY}/updates.json'
 ##################################
 
 ##################################
@@ -279,7 +284,7 @@ def get_item_name(base='items', moreDetails=True):
 # These settings configure the exporter
 # See https://docs.scrapy.org/en/latest/topics/feed-exports.html#feeds for details
 FEEDS = {
-    f'../Output/{get_item_name()}.xlsx': {
+    f'{OUTPUT_DIRECTORY}/{get_item_name()}.xlsx': {
         'format': 'xlsx',
         'overwrite': True,
         'item_export_kwargs': {
@@ -292,11 +297,11 @@ FEEDS = {
             'datetime_format': 'YYYY-MM-DD HH:MM:SS',
         },
     },
-    f'../Output/{get_item_name()}.json': {
+    f'{OUTPUT_DIRECTORY}/{get_item_name()}.json': {
         'format': 'json',
         'overwrite': True,
     },
-    f'../Output/{get_item_name()}.xml': {
+    f'{OUTPUT_DIRECTORY}/{get_item_name()}.xml': {
         'format': 'xml',
         'overwrite': True,
         'item_export_kwargs': {
@@ -304,7 +309,7 @@ FEEDS = {
             'item_element': 'study',
         }
     },
-    f'../Output/{get_item_name()}.csv': {
+    f'{OUTPUT_DIRECTORY}/{get_item_name()}.csv': {
         'format': 'csv',
         'overwrite': True,
         'item_export_kwargs': {

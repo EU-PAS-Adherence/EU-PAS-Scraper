@@ -4,22 +4,31 @@
 # https://docs.scrapy.org/en/latest/topics/items.html
 
 from scrapy import item
+
 from datetime import datetime as dt
 
 
-def serialize_id(x): return x.replace(
-    'EUPAS', '', 1) if isinstance(x, str) else x
+def serialize_id(x: str) -> str:
+    return x.replace('EUPAS', '', 1)
 
 
-def serialize_primary_scope(x): return x.replace('Primary scope : ', '', 1)
-def serialize_date(x): return dt.strptime(x, '%d/%m/%Y').date()
+def serialize_primary_scope(x: str) -> str:
+    return x.replace('Primary scope : ', '', 1)
 
 
-def serialize_encepp_document_url(x):
+def serialize_date(x: str) -> dt:
+    return dt.strptime(x, '%d/%m/%Y').date()
+
+
+def serialize_encepp_document_url(x: str, empty_url_name: str = 'Empty Url') -> str:
+    if not x:
+        return empty_url_name
+    # Leave absolute paths unchanged (could be external urls)
     if x[0] != '/':
         return x
+    # All relative urls ending with / lead do not lead to a new website
     if x.split(";")[0][-1] == '/':
-        return 'Empty Url'
+        return empty_url_name
     return f'https://www.encepp.eu{x.split(";")[0]}'
 
 
@@ -90,4 +99,5 @@ class Study(item.Item):
     latest_result_document_url = item.Field(
         serializer=serialize_encepp_document_url)
     references = item.Field()
-    other_documents_url = item.Field(serializer=lambda x: list(map(serialize_encepp_document_url, x)))
+    other_documents_url = item.Field(
+        serializer=lambda x: list(map(serialize_encepp_document_url, x)))

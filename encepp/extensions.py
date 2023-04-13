@@ -1,8 +1,9 @@
-import json
 from scrapy import signals
-from scrapy.exporters import BaseItemExporter
 from scrapy.exceptions import NotConfigured
+from scrapy.exporters import BaseItemExporter
 from scrapy.utils.serialize import ScrapyJSONEncoder
+
+import json
 
 from encepp.pipelines import MetaFieldPipeline
 

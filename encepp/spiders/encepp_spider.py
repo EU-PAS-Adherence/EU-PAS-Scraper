@@ -4,12 +4,12 @@
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/spiders.html
 
-from typing import List, Generator
-from enum import Enum
-import re
-
 from scrapy import spiders, http, selector, signals
 from tqdm import tqdm
+
+from enum import Enum
+import re
+from typing import List, Generator
 
 from encepp.items import Study
 
@@ -238,11 +238,11 @@ class EU_PAS_Extractor(spiders.Spider):
         def extract_from_table(table: selector.SelectorList, sorted_fields: List[str], caster=[str, str]):
             other = [], []
             for i, row in enumerate(table[1:]):
-                if 2*i + 1 < len(sorted_fields):
+                if 2 * i + 1 < len(sorted_fields):
                     if first_value := row.xpath('./span[2]//text()').get():
-                        study[sorted_fields[2*i]] = caster[0](first_value)
+                        study[sorted_fields[2 * i]] = caster[0](first_value)
                     if second_value := row.xpath('./span[3]//text()').get():
-                        study[sorted_fields[2*i + 1]] = caster[1](second_value)
+                        study[sorted_fields[2 * i + 1]] = caster[1](second_value)
                 else:
                     if first_value := row.xpath('./span[2]//text()').get():
                         other[0].append(caster[0](first_value))

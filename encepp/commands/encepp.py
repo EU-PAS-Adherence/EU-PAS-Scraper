@@ -24,9 +24,9 @@ class Command(CrawlCommand):
         CrawlCommand.process_options(self, args, opts)
         if opts.debug:
             self.settings.set("LOG_ENABLED", True,
-                              priority=self.settings.maxpriority()+10)
+                              priority=self.settings.maxpriority() + 10)
             self.settings.set("LOG_LEVEL", "DEBUG",
-                              priority=self.settings.maxpriority()+10)
+                              priority=self.settings.maxpriority() + 10)
         opts.spargs.setdefault('progress_logging', not opts.debug)
         opts.spargs.setdefault('filter_studies', bool(opts.filter))
         if opts.filter:
