@@ -9,6 +9,8 @@
 
 import random
 
+PACKAGE_VERSION = '0.0.1'
+
 # Custom output folder
 # OUTPUT_DIRECTORY = '../Output'
 OUTPUT_DIRECTORY = './output'
@@ -38,7 +40,6 @@ def random_ua():
 
 # Crawl responsibly by identifying yourself on the user-agent
 USER_AGENT = random_ua()
-print(random_ua, __file__)
 ##################################
 
 ##################################
