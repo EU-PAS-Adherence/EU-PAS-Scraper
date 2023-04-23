@@ -462,19 +462,19 @@
         },
         "protocol_document_url": {
             "type": "string",
-            "pattern": "^/encepp/openAttachment/fullProtocol/\\d{4,6};jsessionid=\\S+!-?\\d{8,10}$"
+            "pattern": "^/encepp/openAttachment/fullProtocol/\\d{4,6}(;jsessionid=\\S+!-?\\d{8,10})?$"
         },
         "latest_protocol_document_url": {
             "type": "string",
-            "pattern": "^/encepp/openAttachment/fullProtocolLatest/\\d{4,6};jsessionid=\\S+!-?\\d{8,10}$"
+            "pattern": "^/encepp/openAttachment/fullProtocolLatest/\\d{4,6}(;jsessionid=\\S+!-?\\d{8,10})?$"
         },
         "result_document_url": {
             "type": "string",
-            "pattern": "^/encepp/openAttachment/studyResult/\\d{4,6};jsessionid=\\S+!-?\\d{8,10}$"
+            "pattern": "^/encepp/openAttachment/studyResult/\\d{4,6}(;jsessionid=\\S+!-?\\d{8,10})?$"
         },
         "latest_result_document_url": {
             "type": "string",
-            "pattern": "^/encepp/openAttachment/studyResultLatest/\\d{4,6};jsessionid=\\S+!-?\\d{8,10}$"
+            "pattern": "^/encepp/openAttachment/studyResultLatest/\\d{4,6}(;jsessionid=\\S+!-?\\d{8,10})?$"
         },
         "references": {
             "type": "array",

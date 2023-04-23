@@ -78,9 +78,6 @@ class MetaFieldPipeline:
             for other_field_value in other_values:
                 self.matcher.set_seqs(self.filter_junk_words(
                     field_value), self.filter_junk_words(other_field_value))
-                # print(field_value, other_field_value)
-                # print(self.filter_junk_words(field_value),
-                #       self.filter_junk_words(other_field_value))
                 if self.matcher.ratio() > 0.65:
                     matched = True
                     item.setdefault(meta_field_name, other_field_value)

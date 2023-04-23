@@ -7,13 +7,16 @@
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
+from datetime import datetime as dt
+from pathlib import Path
 import random
 
 PACKAGE_VERSION = '0.0.1'
 
 # Custom output folder
 # OUTPUT_DIRECTORY = '../Output'
-OUTPUT_DIRECTORY = './output'
+OUTPUT_DIRECTORY = f"./output/{dt.now().strftime('%Y_%m_%d_T%H_%M_%S')}"
+Path(OUTPUT_DIRECTORY).mkdir(parents=True, exist_ok=True)
 
 BOT_NAME = None
 
@@ -75,7 +78,6 @@ CONCURRENT_REQUESTS_PER_DOMAIN = 12
 # Enable or disable spider middlewares
 # See https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 SPIDER_MIDDLEWARES = {
-    'scrapy.spidermiddlewares.offsite.OffsiteMiddleware': None,
     'scrapy.spidermiddlewares.urllength.UrlLengthMiddleware': None,
 }
 
@@ -113,7 +115,7 @@ ITEM_PIPELINES = {
 ##################################
 #       SPIDER MIDDLEWARE        #
 ##################################
-DEPTH_LIMIT = 1
+DEPTH_LIMIT = 2
 
 REFERRER_ENABLED = True
 ##################################
@@ -122,7 +124,7 @@ REFERRER_ENABLED = True
 #     DOWNLOADER MIDDLEWARE      #
 ##################################
 # Disable cookies (enabled by default)
-COOKIES_ENABLED = False
+COOKIES_ENABLED = True
 COOKIES_DEBUG = False
 
 # Override the default request headers:

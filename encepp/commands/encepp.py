@@ -19,6 +19,9 @@ class Command(CrawlCommand):
         group.add_argument(
             "--debug", action="store_true", help="enable debugging"
         )
+        group.add_argument(
+            "--download-pdf", action="store_true", help="downloads a pdf file for each study detail page"
+        )
 
     def process_options(self, args, opts):
         CrawlCommand.process_options(self, args, opts)
@@ -29,13 +32,14 @@ class Command(CrawlCommand):
                               priority=self.settings.maxpriority() + 10)
         opts.spargs.setdefault('progress_logging', not opts.debug)
         opts.spargs.setdefault('filter_studies', bool(opts.filter))
+        opts.spargs.setdefault('save_pdf', opts.download_pdf)
         if opts.filter:
             id_candidate = opts.filter.lower().replace('eupas', '')
             if id_candidate.isdigit():
-                opts.spargs.setdefault('eupas_id', int(id_candidate))
+                opts.spargs.setdefault('filter_eupas_id', int(id_candidate))
             else:
                 opts.spargs.setdefault(
-                    'rmp_category', self.get_rmp(opts.filter))
+                    'filter_rmp_category', self.get_rmp(opts.filter))
 
     def get_rmp(self, value):
         match value.lower():

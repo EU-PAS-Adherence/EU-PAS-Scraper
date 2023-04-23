@@ -8,13 +8,18 @@ from scrapy import spiders, http, selector, signals
 from tqdm import tqdm
 
 from enum import Enum
+from pathlib import Path
 import re
-from typing import List, Generator
+# from threading import Thread
+from typing import List, Generator, Union
 
 from encepp.items import Study
 
 
 class RMP(Enum):
+    '''
+    The Risk Management Plan of a PAS
+    '''
     not_applicable = 1
     EU_RPM_category_1 = 2
     EU_RPM_category_2 = 3
@@ -24,21 +29,26 @@ class RMP(Enum):
 
 class EU_PAS_Extractor(spiders.Spider):
     '''
-    Parent Class of a Scrapy Spider which extracts data from the EU Pas Register.
+    This Scrapy Spider extracts study data from the EU PAS Register.
     '''
 
-    # Spider Settings
+    # Overriden Spider Settings
     # name is used to start a spider with the scrapy cmd-tool
     name = 'encepp'
     # custom_settings contains own settings, but can also override the values in settings.py
     custom_settings = {
         'PROGRESS_LOGGING': False,
-        'FILTER_STUDIES': False
+        'FILTER_STUDIES': False,
+        'SAVE_PDF': False
     }
+    # These are the allowed domains. This spider should only follow urls in these domains
+    allowed_domains = ['encepp.eu']
 
     # URLS and headers
     base_url = 'https://www.encepp.eu'
     query_url = f'{base_url}/encepp/studySearch.htm'
+    pdf_base_url = f'{base_url}//encepp/enceppPrint.pdf?screen=search'
+    # NOTE: Only the Content-Type is important for the POST request
     query_headers = {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -49,19 +59,23 @@ class EU_PAS_Extractor(spiders.Spider):
     }
 
     # Filter Settings
+    # This string is used to query the studies
+    # NOTE: There are other queries which aren't included in this string
     template_string = 'studyCriteria.resourceLabel={eu_pas_register_number}&studyCriteria.studyRMP={risk_managment_plan}'
 
     # RegEx is used to remove the sessionid in the urls => make scraper less visible
+    # NOTE: Use proxy rotation for better evasion
     session_regex = re.compile(r'jsessionid=.+\?')
 
-    def __init__(self, progress_logging=False, filter_studies=False, rmp_category=None, eupas_id=None, *args, **kwargs):
+    def __init__(self, progress_logging=False, filter_studies=False, filter_rmp_category=None, filter_eupas_id=None, save_pdf=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.custom_settings.update({
             'PROGRESS_LOGGING': progress_logging,
-            'FILTER_STUDIES': filter_studies
+            'FILTER_STUDIES': filter_studies,
+            'SAVE_PDF': save_pdf
         })
-        self.rmp_query_val = rmp_category.value if rmp_category else ''
-        self.eupas_id_query_val = eupas_id or ''
+        self.rmp_query_val = filter_rmp_category.value if filter_rmp_category else ''
+        self.eupas_id_query_val = filter_eupas_id or ''
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
@@ -69,20 +83,19 @@ class EU_PAS_Extractor(spiders.Spider):
         crawler.signals.connect(spider.idle, signals.spider_idle)
         return spider
 
-    def start_requests(self):
+    def start_requests(self) -> List[http.Request]:
         '''
         Starts the scraping process by requesting a query for all (or a filtered subset of all) PAS.
         '''
+        query = None
         if self.custom_settings.get('FILTER_STUDIES'):
             query = self.template_string.format(
                 risk_managment_plan=self.rmp_query_val,
                 eu_pas_register_number=self.eupas_id_query_val
             )
-        else:
-            query = None
 
-        print('Starting Extraction')
-        yield http.Request(
+        self.logger.info('Starting Extraction')
+        return [http.Request(
             url=self.query_url,
             method='POST',
             headers=self.query_headers,
@@ -90,10 +103,11 @@ class EU_PAS_Extractor(spiders.Spider):
             callback=self.parse,
             meta={
                 'download_timeout': 10 * 60,
+                'dont_merge_cookies': True
             }
-        )
+        )]
 
-    def parse(self, response: http.TextResponse):
+    def parse(self, response: http.TextResponse) -> Generator[http.Request, None, None]:
         '''Parses the table of the queried studies and follows the urls to the respective study details by parsing each table row seperatly.
 
         @url https://www.encepp.eu/encepp/studySearch.htm
@@ -102,9 +116,10 @@ class EU_PAS_Extractor(spiders.Spider):
         @returns items 0 0
         '''
         main_content = response.css('div.insidecentre')[0]
+
         n_studies = int(main_content.xpath('.//h5/text()').get().split()[0])
         self.crawler.stats.set_value('item_expected_count', n_studies)
-        print(f'{n_studies} studies will be extracted.')
+        self.logger.info(f'{n_studies} studies will be extracted.')
 
         if self.custom_settings.get('PROGRESS_LOGGING'):
             self.pbar = tqdm(
@@ -118,23 +133,24 @@ class EU_PAS_Extractor(spiders.Spider):
         for row in main_content.xpath('.//table/tr')[1:]:
             yield self.parse_study(data_row=row)
 
-    def parse_study(self, data_row: selector.Selector):
+    def parse_study(self, data_row: selector.Selector) -> http.Request:
         '''
         Extracts relevant study data from a table row and follows an extracted url to get more details about the respective study.
         '''
+        url = self.base_url + data_row.xpath('./td[3]//a/@href').get()
+        url = self.session_regex.sub('?', url)
+
         study = Study()
         study['state'] = data_row.xpath('./td[1]//text()').get()
         study['eu_pas_register_number'] = data_row.xpath(
             './td[2]//text()').get()
         study['title'] = data_row.xpath('./td[3]//text()').get()
         study['update_date'] = data_row.xpath('./td[4]//text()').get().strip()
-
-        url = self.base_url + data_row.xpath('./td[3]//a/@href').get()
-        url = self.session_regex.sub('?', url)
         study['url'] = url
-        return http.Request(url=url, callback=self.parse_details, cb_kwargs=dict(study=study))
 
-    def parse_details(self, response: http.TextResponse, study: Study):
+        return http.Request(url=url, callback=self.parse_details, meta={'dont_merge_cookies': not self.custom_settings.get('SAVE_PDF')}, cb_kwargs=dict(study=study))
+
+    def parse_details(self, response: http.TextResponse, study: Study) -> Generator[Union[Study, http.Request], None, None]:
         ''' Parses the study details from all four tabs. Each tab will be processed by it's own method.
 
         @url https://www.encepp.eu/encepp/viewResource.htm?id=50574
@@ -147,6 +163,11 @@ class EU_PAS_Extractor(spiders.Spider):
 
         study['registration_date'] = response.css(
             'div.insidecentre')[0].xpath('./div[2]/span[3]/text()[normalize-space()]').get().strip()
+
+        if self.custom_settings.get('SAVE_PDF'):
+            pdf_url = f"{self.pdf_base_url}&&lastU={study['update_date']}&createdOn={study['registration_date']}"
+            yield http.Request(url=pdf_url, callback=self.save_pdf, dont_filter=True, cb_kwargs=dict(study=study))
+
         self.parse_admin_details(details=response.xpath(
             './/*[@id="1"]')[0], study=study)
         self.parse_target_details(details=response.xpath(
@@ -155,9 +176,30 @@ class EU_PAS_Extractor(spiders.Spider):
             './/*[@id="3"]')[0], study=study)
         self.parse_document_details(
             details=response.xpath('.//*[@id="4"]')[0], study=study)
-        return study
 
-    def get_block_from_details(
+        # admin_task = Thread(target=self.parse_admin_details, args=[
+        #                     response.xpath('.//*[@id="1"]')[0], study])
+        # target_task = Thread(target=self.parse_target_details, args=[
+        #                      response.xpath('.//*[@id="2"]')[0], study])
+        # method_task = Thread(target=self.parse_method_details, args=[
+        #                      response.xpath('.//*[@id="3"]')[0], study])
+        # document_task = Thread(target=self.parse_document_details, args=[
+        #                        response.xpath('.//*[@id="4"]')[0], study])
+        # tasks = [admin_task, target_task, method_task, document_task]
+        # for task in tasks:
+        #     task.start()
+        # for task in tasks:
+        #     task.join()
+
+        yield study
+
+    def save_pdf(self, response: http.Response, study: Study):
+        file_path = Path(f"{self.settings.get('OUTPUT_DIRECTORY')}/PDFs/")
+        file_path.mkdir(parents=True, exist_ok=True)
+        pdf_file = file_path / f"{study['eu_pas_register_number']}.pdf"
+        pdf_file.write_bytes(response.body)
+
+    def _get_block_from_details(
         self,
         details: selector.Selector,
         index: int,
@@ -169,7 +211,7 @@ class EU_PAS_Extractor(spiders.Spider):
         '''
         return details.xpath(f'./{block_element}[count(preceding-sibling::{seperator_element}/following-sibling::{block_element}[1]) = {index}]')
 
-    def get_multiblock_from_details(
+    def _get_multiblock_from_details(
         self,
         details: selector.Selector,
         index: int,
@@ -193,11 +235,11 @@ class EU_PAS_Extractor(spiders.Spider):
             yield block[start: end]
             start = end + 1
 
-    def parse_admin_details(self, details: selector.Selector, study: Study):
+    def parse_admin_details(self, details: selector.Selector, study: Study) -> None:
         '''
         Parses the details of the first tab: "Administrative Details"
         '''
-        # First Block
+        # First Block: Study identification
         if acronym := details.xpath('./div[3]/span[2]//text()').get():
             study['acronym'] = acronym
         study['study_type'] = details.xpath('./div[4]/span[2]//text()').get()
@@ -208,8 +250,8 @@ class EU_PAS_Extractor(spiders.Spider):
         if rpn := details.xpath('./div[8]/span[2]//text()').get():
             study['regulatory_procedure_number'] = rpn
 
-        # Second Block
-        block = self.get_block_from_details(details, index=2)
+        # Second Block: Research centres and Investigator details
+        block = self._get_block_from_details(details, index=2)
         if len(block) == 2:
             study['centre_name'] = block[0].xpath('./span[2]//text()').get()
             study['centre_location'] = block[1].xpath(
@@ -223,13 +265,14 @@ class EU_PAS_Extractor(spiders.Spider):
             self.logger.warning(
                 'Found unexpected "Coordinating study entity" table format in the following study:\n %s', study['url'])
 
-        # Fourth Block
-        block = self.get_block_from_details(details, index=4)
+        # Fourth Block:
+        # Is this study being carried out with the collaboration of a research network?
+        block = self._get_block_from_details(details, index=4)
         study['collaboration_with_research_network'] = block[0].xpath(
             './/text()[normalize-space()]').get()
 
-        # Sixth Block
-        block = self.get_block_from_details(details, index=6)
+        # Sixth Block: Countries in which this study is being conducted
+        block = self._get_block_from_details(details, index=6)
         study['country_type'] = block[0].xpath(
             './/text()[normalize-space()]').get()
         study['countries'] = [country.strip() for country in block[1:].xpath(
@@ -242,7 +285,8 @@ class EU_PAS_Extractor(spiders.Spider):
                     if first_value := row.xpath('./span[2]//text()').get():
                         study[sorted_fields[2 * i]] = caster[0](first_value)
                     if second_value := row.xpath('./span[3]//text()').get():
-                        study[sorted_fields[2 * i + 1]] = caster[1](second_value)
+                        study[sorted_fields[2 * i + 1]
+                              ] = caster[1](second_value)
                 else:
                     if first_value := row.xpath('./span[2]//text()').get():
                         other[0].append(caster[0](first_value))
@@ -250,8 +294,9 @@ class EU_PAS_Extractor(spiders.Spider):
                         other[1].append(caster[1](second_value))
             return other
 
-        # Seventh Block
-        block = self.get_block_from_details(details, index=7)
+        # Seventh Block:
+        # Study timelines: initial administrative steps, progress reports and final report
+        block = self._get_block_from_details(details, index=7)
         extract_from_table(table=block, sorted_fields=[
             'funding_contract_date_planed',
             'funding_contract_date_actual',
@@ -265,8 +310,8 @@ class EU_PAS_Extractor(spiders.Spider):
             'final_study_date_actual'
         ])
 
-        # Eight block
-        block = self.get_block_from_details(details, index=8)
+        # Eight block: Sources of funding
+        block = self._get_block_from_details(details, index=8)
         other_names, other_percentage = extract_from_table(table=block, sorted_fields=[
             'funding_companies_names',
             'funding_companies_percentage',
@@ -284,12 +329,12 @@ class EU_PAS_Extractor(spiders.Spider):
         if other_percentage:
             study['funding_other_percentage'] = other_percentage
 
-    def parse_target_details(self, details: selector.Selector, study: Study):
+    def parse_target_details(self, details: selector.Selector, study: Study) -> None:
         '''
         Parses the details of the second tab: "Targets of the Study"
         '''
-        # First Block
-        block = self.get_block_from_details(details, index=1)
+        # First Block: Study drug(s) information
+        block = self._get_block_from_details(details, index=1)
         substance_atc = set()
         substance_inn = set()
         for row in block:
@@ -306,8 +351,8 @@ class EU_PAS_Extractor(spiders.Spider):
         if substance_inn:
             study['substance_inn'] = sorted(list(substance_inn))
 
-        # Second Block
-        block = self.get_block_from_details(details, index=2)
+        # Second Block: Medical conditions to be studied
+        block = self._get_block_from_details(details, index=2)
         study['medical_conditions'] = [block[0].xpath('./span[2]/text()').get()] + [
             row.xpath('./text()').get('').strip() for row in block[1:] if row.xpath('./text()[normalize-space()]').get()]
 
@@ -319,9 +364,9 @@ class EU_PAS_Extractor(spiders.Spider):
             study['additional_medical_conditions'] = block[-1].xpath(
                 './span[2]//text()[normalize-space()]').get()
 
-        # Third Block
+        # Third Block: Population under study
         # CAVE: WHENEVER MAP IS USED => Map object has to be turned into list for json and jsonschema to work
-        multiblock = self.get_multiblock_from_details(
+        multiblock = self._get_multiblock_from_details(
             details, index=3, filter_element='br', offset=1, every_nth=2)
         if age_block := next(multiblock, None):
             study['age_population'] = list(map(lambda x: x.strip(), age_block.xpath(
@@ -339,17 +384,17 @@ class EU_PAS_Extractor(spiders.Spider):
                         self.logger.warning(
                             'Found additional population block in the following study:\n %s', study['url'])
 
-        # Fourth Block
-        block = self.get_block_from_details(details, index=4)
+        # Fourth Block: Number of subjects
+        block = self._get_block_from_details(details, index=4)
         study['number_of_subjects'] = int(
             block[0].xpath('./span[2]//text()').get())
 
-        # Fifth Block
-        block = self.get_block_from_details(details, index=5)
+        # Fifth Block: Source of data
+        block = self._get_block_from_details(details, index=5)
         study['uses_established_data_source'] = block[0].xpath(
             './span[2]//text()').get()
 
-        multiblock = self.get_multiblock_from_details(
+        multiblock = self._get_multiblock_from_details(
             details, index=5, filter_element='br', offset=1)
         while category := next(multiblock, None):
             if entries := next(multiblock, None):
@@ -366,18 +411,18 @@ class EU_PAS_Extractor(spiders.Spider):
                 self.logger.warning(
                     'Found unexpected empty data source category in the following study:\n %s', study['url'])
 
-    def parse_method_details(self, details: selector.Selector, study: Study):
+    def parse_method_details(self, details: selector.Selector, study: Study) -> None:
         '''
         Parses the details of the third tab: "Methodological Aspects"
         '''
-        # First Block
-        block = self.get_block_from_details(details, index=1)
+        # First Block: Scope of the study
+        block = self._get_block_from_details(details, index=1)
         study['scopes'] = list(map(
             lambda x: x.strip(), block[1:-1].xpath('./text()[normalize-space()]').getall()))
         study['primary_scope'] = block[-1].xpath('./span/text()').get()
 
-        # Second Block
-        block = self.get_block_from_details(details, index=2)
+        # Second Block: Main objective(s)
+        block = self._get_block_from_details(details, index=2)
         block = block.xpath('./self::*[.//b]')
         study['primary_outcomes'] = list(filter(lambda x: x, [
             block[0].xpath('./span[2]/text()').get(),
@@ -386,22 +431,22 @@ class EU_PAS_Extractor(spiders.Spider):
             block[1].xpath('./span[2]/text()').get(),
             block[1].xpath('./following-sibling::*[1][self::br]/following-sibling::div[1]//text()[normalize-space()]').get()]))
 
-        # Third Block
-        block = self.get_block_from_details(details, index=3)
+        # Third Block: Study design
+        block = self._get_block_from_details(details, index=3)
         study['study_design'] = list(map(lambda x: x.strip(), block[1:].xpath(
             './text()[normalize-space()]').getall()))
 
-        # Fourth Block
-        block = self.get_block_from_details(details, index=4)
+        # Fourth Block: Follow-up of patients
+        block = self._get_block_from_details(details, index=4)
         study['follow_up'] = block[0].xpath('./span[2]/text()').get()
 
-    def parse_document_details(self, details: selector.Selector, study: Study):
+    def parse_document_details(self, details: selector.Selector, study: Study) -> None:
         '''
         Parses the details of the fourth tab: "Documents"
         '''
 
-        # Second Block
-        block = self.get_block_from_details(details, index=2)
+        # Second Block: Full protocol
+        block = self._get_block_from_details(details, index=2)
         num_cells = len(block[0].xpath('./span'))
         if num_cells < 4:
             # num cells will be one if there aren't any urls
@@ -417,8 +462,8 @@ class EU_PAS_Extractor(spiders.Spider):
             self.logger.warning(
                 'Found unexpected number of protocol document url cells in the following study:\n %s', study['url'])
 
-        # Third Block
-        block = self.get_block_from_details(details, index=3)
+        # Third Block: Study Results
+        block = self._get_block_from_details(details, index=3)
         num_cells = len(block[0].xpath('./span'))
         if num_cells < 4:
             # num cells will be one if there aren't any urls
@@ -437,7 +482,8 @@ class EU_PAS_Extractor(spiders.Spider):
         if references := list(filter(lambda x: bool(x), block[2:].xpath('translate(.//a/@href, " ", "")').getall())):
             study['references'] = references
 
-        block = self.get_multiblock_from_details(details, index=4, offset=2)
+        # Fourth Block: Other relevant documents
+        block = self._get_multiblock_from_details(details, index=4, offset=2)
         if other_documents := next(block, None):
             if other_documents_url := other_documents.xpath('.//a/@href').getall():
                 study['other_documents_url'] = other_documents_url
@@ -452,10 +498,10 @@ class EU_PAS_Extractor(spiders.Spider):
     def closed(self, reason: str):
         match reason:
             case 'finished':
-                print('Scraping finished successfully.')
+                self.logger.info('Scraping finished successfully.')
             case 'shutdown':
-                print('Scraping was stopped by user.')
+                self.logger.info('Scraping was stopped by user.')
             case other:
-                print(f'Scraping finished with reason: {other}')
-        print(
+                self.logger.info(f'Scraping finished with reason: {other}')
+        self.logger.info(
             f'Extraction finished in {self.crawler.stats.get_value("elapsed_time_seconds")} seconds.')

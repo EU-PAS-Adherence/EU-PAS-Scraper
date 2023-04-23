@@ -56,8 +56,10 @@ class ExpectedResponsesMonitor(Monitor):
             self.data.stats, 'response_received_count', 0)
         duplicates = getattr(
             self.data.stats, 'dupefilter/filtered', 0)
-        expected_requests = 1 + getattr(
+        expected_study_detail_requests = getattr(
             self.data.stats, 'item_expected_count', 1) - duplicates
+        expected_requests = 1 + expected_study_detail_requests * \
+            (2 if self.data.spider.custom_settings.get('SAVE_PDF') else 1)
 
         msg = f'{actual_requests} Response(s) received, but expected {expected_requests} Response(s)'
         self.assertTrue(actual_requests == expected_requests, msg=msg)
