@@ -42,17 +42,18 @@ class Command(CrawlCommand):
                     'filter_rmp_category', self.get_rmp(opts.filter))
 
     def get_rmp(self, value):
-        match value.lower():
-            case "rmp1":
-                return RMP.EU_RPM_category_1
-            case "rmp2":
-                return RMP.EU_RPM_category_2
-            case "rmp3":
-                return RMP.EU_RPM_category_3
-            case ["noneu", "non_eu", "noneurmp", "non_eu_rmp", "otherrmp"]:
-                return RMP.non_EU_RPM
-            case ["na", "n_a", "n/a", "notapplicable", "not_applicable"]:
-                return RMP.not_applicable
+        rmp = value.lower()
+        if rmp == 'rmp1':
+            return RMP.EU_RPM_category_1
+        elif rmp == 'rmp2':
+            return RMP.EU_RPM_category_2
+        elif rmp == 'rmp3':
+            return RMP.EU_RPM_category_3
+        elif rmp in ["noneu", "non_eu", "noneurmp", "non_eu_rmp", "otherrmp"]:
+            return RMP.non_EU_RPM
+        elif rmp in ["na", "n_a", "n/a", "notapplicable", "not_applicable"]:
+            return RMP.not_applicable
+
         raise UsageError(f"Received unsuported filter value: {value}")
 
     def syntax(self):

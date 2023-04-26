@@ -8,10 +8,9 @@ authors = [
     {name = "Pedram Ramezani", email = "pedram.ramezani@charite.de"},
 ]
 description = "A package for scraping data of the eu pas register."
-requires-python = ">=3.10"
+requires-python = ">=3.8"
 keywords = ["Scrapy", "Meta-Research"]
 # license = {file = "LICENSE"}
-# license = {text = "MIT License"}
 classifiers = [
     "Framework :: Scrapy",
     "Intended Audience :: Healthcare Industry",
@@ -25,7 +24,6 @@ classifiers = [
 dynamic = ["version", "dependencies", "optional-dependencies"]
 
 [tool.setuptools]
-# packages = ["encepp"]
 zip-safe = false
 include-package-data = true
 
@@ -36,7 +34,8 @@ exclude = ["tests"]
 
 [tool.setuptools.dynamic]
 version = {attr = "encepp.settings.PACKAGE_VERSION"}
-# readme = {file = ["../README.md"], content-type = "text/markdown"} Can't go outside of EnceppScrapy
+# NOTE: Can't go outside of EnceppScrapy:
+# readme = {file = ["../README.md"], content-type = "text/markdown"}
 dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.dynamic.optional-dependencies]

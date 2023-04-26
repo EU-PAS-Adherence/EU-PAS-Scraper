@@ -496,12 +496,12 @@ class EU_PAS_Extractor(spiders.Spider):
             self.pbar.close()
 
     def closed(self, reason: str):
-        match reason:
-            case 'finished':
-                self.logger.info('Scraping finished successfully.')
-            case 'shutdown':
-                self.logger.info('Scraping was stopped by user.')
-            case other:
-                self.logger.info(f'Scraping finished with reason: {other}')
+        if reason == 'finished':
+            self.logger.info('Scraping finished successfully.')
+        elif reason == 'shutdown':
+            self.logger.info('Scraping was stopped by user.')
+        else:
+            self.logger.info(f'Scraping finished with reason: {reason}')
+
         self.logger.info(
             f'Extraction finished in {self.crawler.stats.get_value("elapsed_time_seconds")} seconds.')
