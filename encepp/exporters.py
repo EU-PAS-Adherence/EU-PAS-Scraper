@@ -16,6 +16,7 @@ from scrapy.spiders import Spider
 
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime
+from typing import List
 
 
 def uri_params(params, spider: Spider):
@@ -115,7 +116,7 @@ class XlsxItemExporter(BaseItemExporter):
             val.font = self.accent_font
         return values
 
-    def _snake_case_to_upper_case(self, names: list[str]):
+    def _snake_case_to_upper_case(self, names: List[str]):
         return [' '.join([word.capitalize() for word in name.split('_')]) for name in names]
 
     def _write_headers_and_set_fields_to_export(self, item):
