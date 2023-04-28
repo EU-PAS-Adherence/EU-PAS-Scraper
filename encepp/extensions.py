@@ -4,6 +4,7 @@ from scrapy.exporters import BaseItemExporter
 from scrapy.utils.serialize import ScrapyJSONEncoder
 
 import json
+from pathlib import Path
 
 from encepp.pipelines import MetaFieldPipeline
 
@@ -60,7 +61,9 @@ class ItemHistoryComparer:
 
     def spider_idle(self, spider):
         if self.updates:
-            with open(self.output_path, 'w') as f:
+            path = Path(self.output_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open('w', encoding='UTF-8') as f:
                 json.dump(sorted(
                     self.updates, key=lambda x: not x[self.changed_date_key]), f, indent='\t', sort_keys=True)
 

@@ -8,15 +8,27 @@
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
 from datetime import datetime as dt
+from datetime import timezone
 from pathlib import Path
 import random
 
+##################################
+#      NON SCRAPY VARIABLES      #
+##################################
+# This value is used as a dynamic version number in pyproject.toml 
 PACKAGE_VERSION = '0.0.1'
 
 # Custom output folder
-# OUTPUT_DIRECTORY = '../Output'
-OUTPUT_DIRECTORY = f"./output/{dt.now().strftime('%Y_%m_%d_T%H_%M_%S')}"
+# The Output Directory stores all feed exports,
+# the spidermon report and updates.json
+OUTPUT_DIRECTORY = (
+    f"./output/{dt.now(timezone.utc).strftime('%Y_%m_%d_T%H_%M_%S')}"
+)
 Path(OUTPUT_DIRECTORY).mkdir(parents=True, exist_ok=True)
+##################################
+
+# All of the variables listed (except extension settings) below are documented here:
+# https://docs.scrapy.org/en/latest/topics/settings.html#built-in-settings-reference
 
 BOT_NAME = None
 
