@@ -26,9 +26,7 @@ class ItemHistoryComparer:
     changed_url_key = '$CHANGED_URL'
     deleted_fields_key = '$DELETED_FIELDS'
 
-    # TODO: if meta field pipeline is used: Ignore meta field names
-    # which may start with the letter $ or _
-
+    # NOTE: If the meta field pipeline is used: all meta field names get ignored
     def __init__(self, file_path, output_path, crawler, has_meta_fields=False):
         self.exporter = SingleJsonItemStringExporter()
         with open(file_path, 'r') as f:
@@ -92,7 +90,6 @@ class ItemHistoryComparer:
                        frozenset(new_study.keys()))
         updates_dict = dict(difference)
 
-        # TODO: Doesnt keep track of deleted attributes
         if difference or deleted:
             if 'update_date' in updates_dict:
                 self.crawler.stats.inc_value(

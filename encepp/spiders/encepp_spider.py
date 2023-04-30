@@ -10,7 +10,6 @@ from tqdm import tqdm
 from enum import Enum
 from pathlib import Path
 import re
-# from threading import Thread
 from typing import List, Generator, Union
 
 from encepp.items import Study
@@ -76,6 +75,15 @@ class EU_PAS_Extractor(spiders.Spider):
         })
         self.rmp_query_val = filter_rmp_category.value if filter_rmp_category else ''
         self.eupas_id_query_val = filter_eupas_id or ''
+
+        # TODO: Remove warnings filter after fix:
+        # https://github.com/scrapy/scrapy/issues/5903
+        import warnings
+        warnings.filterwarnings(
+            'ignore', 
+            message='Selector got both text and root, root is being ignored.', 
+            category=UserWarning
+        )
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
@@ -176,20 +184,6 @@ class EU_PAS_Extractor(spiders.Spider):
             './/*[@id="3"]')[0], study=study)
         self.parse_document_details(
             details=response.xpath('.//*[@id="4"]')[0], study=study)
-
-        # admin_task = Thread(target=self.parse_admin_details, args=[
-        #                     response.xpath('.//*[@id="1"]')[0], study])
-        # target_task = Thread(target=self.parse_target_details, args=[
-        #                      response.xpath('.//*[@id="2"]')[0], study])
-        # method_task = Thread(target=self.parse_method_details, args=[
-        #                      response.xpath('.//*[@id="3"]')[0], study])
-        # document_task = Thread(target=self.parse_document_details, args=[
-        #                        response.xpath('.//*[@id="4"]')[0], study])
-        # tasks = [admin_task, target_task, method_task, document_task]
-        # for task in tasks:
-        #     task.start()
-        # for task in tasks:
-        #     task.join()
 
         yield study
 
@@ -345,7 +339,7 @@ class EU_PAS_Extractor(spiders.Spider):
                 elif 'Substance class' in spans[i].get():
                     substance_atc.add(spans[i + 1].get())
 
-        # CAVE: Have to convert set to list for json and jsonschema to work
+        # NOTE: Have to convert set to list for json and jsonschema to work
         if substance_atc:
             study['substance_atc'] = sorted(list(substance_atc))
         if substance_inn:
@@ -365,7 +359,7 @@ class EU_PAS_Extractor(spiders.Spider):
                 './span[2]//text()[normalize-space()]').get()
 
         # Third Block: Population under study
-        # CAVE: WHENEVER MAP IS USED => Map object has to be turned into list for json and jsonschema to work
+        # NOTE: WHENEVER MAP IS USED => Map object has to be turned into list for json and jsonschema to work
         multiblock = self._get_multiblock_from_details(
             details, index=3, filter_element='br', offset=1, every_nth=2)
         if age_block := next(multiblock, None):

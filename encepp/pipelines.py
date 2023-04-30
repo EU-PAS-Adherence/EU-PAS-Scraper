@@ -7,7 +7,7 @@ import re
 from difflib import SequenceMatcher
 from scrapy import spiders, item, exceptions
 
-# CAVE: pipelines only work with one type of spider (EU_PAS_Extractor)
+# NOTE: pipelines only work with one type of spider (EU_PAS_Extractor)
 # and item (Study) and it is assumed that there is only one type of each!
 
 
@@ -25,7 +25,7 @@ class DuplicatesPipeline:
 
 
 class MetaFieldPipeline:
-    # The meta field chars shouldn't be the first letter of any actual field [a-z, A-Z]
+    # NOTE: The meta field chars shouldn't be the first letter of any actual field [a-z, A-Z]
     # Furthermore _ can be used but it will be disappear in excel because snake_case
     # will be converted to Capital Case
     meta_field_chars = '$/@'
