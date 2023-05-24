@@ -80,8 +80,8 @@ class EU_PAS_Extractor(spiders.Spider):
         # https://github.com/scrapy/scrapy/issues/5903
         import warnings
         warnings.filterwarnings(
-            'ignore', 
-            message='Selector got both text and root, root is being ignored.', 
+            'ignore',
+            message='Selector got both text and root, root is being ignored.',
             category=UserWarning
         )
 

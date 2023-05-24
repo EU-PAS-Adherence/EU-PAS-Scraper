@@ -9,13 +9,12 @@
 
 from datetime import datetime as dt
 from datetime import timezone
-from pathlib import Path
 import random
 
 ##################################
 #      NON SCRAPY VARIABLES      #
 ##################################
-# This value is used as a dynamic version number in pyproject.toml 
+# This value is used as a dynamic version number in pyproject.toml
 PACKAGE_VERSION = '0.0.1'
 
 # Custom output folder
@@ -24,7 +23,6 @@ PACKAGE_VERSION = '0.0.1'
 OUTPUT_DIRECTORY = (
     f"./output/{dt.now(timezone.utc).strftime('%Y_%m_%d_T%H_%M_%S')}"
 )
-Path(OUTPUT_DIRECTORY).mkdir(parents=True, exist_ok=True)
 ##################################
 
 # All of the variables listed (except extension settings) below are documented here:
@@ -42,6 +40,9 @@ TWISTED_REACTOR = 'twisted.internet.asyncioreactor.AsyncioSelectorReactor'
 ##################################
 #           USER AGENT           #
 ##################################
+# NOTE: Everytime settings.py is loaded, USER_AGENT changes.
+# This isn't a bad thing, but keep in mind that you should use fixed values or
+# functions (without sideeffects) returning fixed values if you can.
 
 
 def random_ua():

@@ -3,7 +3,9 @@
 # See documentation in:
 # https://spidermon.readthedocs.io/en/latest/monitors.html
 
-from spidermon import Monitor, MonitorSuite, monitors
+from pathlib import Path
+
+from spidermon import Monitor, MonitorSuite, monitors, Action, exceptions
 
 from spidermon.contrib.scrapy.monitors import ItemCountMonitor, ItemValidationMonitor
 # from spidermon.contrib.scrapy.monitors import FieldCoverageMonitor
@@ -65,6 +67,35 @@ class ExpectedResponsesMonitor(Monitor):
         self.assertTrue(actual_requests == expected_requests, msg=msg)
 
 
+class CreateFileReportFolder(Action):
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler.settings.get('SPIDERMON_REPORT_FILENAME'))
+
+    def __init__(self, file_name):
+        self.file_name = file_name
+        if not file_name:
+            raise exceptions.NotConfigured
+
+    def run_action(self):
+        Path(self.file_name).parent.mkdir(parents=True, exist_ok=True)
+
+
+class SetSuccessVariable(Action):
+
+    def run_action(self):
+        import os
+        os.environ['LAST_ENCEPP_RUN_SUCCESSFUL'] = 'true'
+
+
+class SetFailVariable(Action):
+
+    def run_action(self):
+        import os
+        os.environ['LAST_ENCEPP_RUN_SUCCESSFUL'] = 'false'
+
+
 class SpiderCloseMonitorSuite(MonitorSuite):
 
     name = 'Encepp Checker'
@@ -97,5 +128,14 @@ class SpiderCloseMonitorSuite(MonitorSuite):
     monitors = log_monitors + item_monitors + http_monitors + other_monitors
 
     monitors_finished_actions = [
+        CreateFileReportFolder,
         CreateFileReport,
+    ]
+
+    monitors_passed_actions = [
+        SetSuccessVariable
+    ]
+
+    monitors_failed_actions = [
+        SetFailVariable
     ]
