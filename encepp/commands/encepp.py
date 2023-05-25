@@ -1,3 +1,6 @@
+import os
+import sys
+
 from scrapy.commands.crawl import Command as CrawlCommand
 from scrapy.exceptions import UsageError
 
@@ -69,6 +72,10 @@ class Command(CrawlCommand):
             )
 
         new_args = [EU_PAS_Extractor.name]
-        return super().run(new_args, opts)
+        super().run(new_args, opts)
 
-    pass
+        monitor_success = os.getenv('MONITOR_SUCCESS') == 'true'
+        print(f'All Monitors Successful: {monitor_success}')
+        if not monitor_success:
+            self.exitcode = 1
+        sys.exit(self.exitcode)

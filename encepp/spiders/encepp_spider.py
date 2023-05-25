@@ -123,11 +123,16 @@ class EU_PAS_Extractor(spiders.Spider):
         @returns requests
         @returns items 0 0
         '''
-        main_content = response.css('div.insidecentre')[0]
 
-        n_studies = int(main_content.xpath('.//h5/text()').get().split()[0])
+        main_content = response.css('div.insidecentre')[0]
+        n_studies = int(main_content.xpath(
+            './/h5/text()').get('0 Studies').split()[0])
         self.crawler.stats.set_value('item_expected_count', n_studies)
-        self.logger.info(f'{n_studies} studies will be extracted.')
+
+        if n_studies == 0:
+            self.logger.warning('No study found.')
+        else:
+            self.logger.info(f'{n_studies} studies will be extracted.')
 
         if self.custom_settings.get('PROGRESS_LOGGING'):
             self.pbar = tqdm(
@@ -137,6 +142,9 @@ class EU_PAS_Extractor(spiders.Spider):
                 unit='studies',
                 colour='green',
             )
+
+        if n_studies == 0:
+            return
 
         for row in main_content.xpath('.//table/tr')[1:]:
             yield self.parse_study(data_row=row)

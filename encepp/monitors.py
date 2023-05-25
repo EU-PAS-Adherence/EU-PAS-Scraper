@@ -3,6 +3,7 @@
 # See documentation in:
 # https://spidermon.readthedocs.io/en/latest/monitors.html
 
+import os
 from pathlib import Path
 
 from spidermon import Monitor, MonitorSuite, monitors, Action, exceptions
@@ -85,15 +86,13 @@ class CreateFileReportFolder(Action):
 class SetSuccessVariable(Action):
 
     def run_action(self):
-        import os
-        os.environ['LAST_ENCEPP_RUN_SUCCESSFUL'] = 'true'
+        os.environ['MONITOR_SUCCESS'] = 'true'
 
 
 class SetFailVariable(Action):
 
     def run_action(self):
-        import os
-        os.environ['LAST_ENCEPP_RUN_SUCCESSFUL'] = 'false'
+        os.environ['MONITOR_SUCCESS'] = 'false'
 
 
 class SpiderCloseMonitorSuite(MonitorSuite):
