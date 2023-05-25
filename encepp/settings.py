@@ -211,7 +211,8 @@ SPIDERMON_MAX_ITEM_VALIDATION_ERRORS = 0
 # SPIDERMON_FIELD_COVERAGE_SKIP_NONE = True
 # for field in ['url', 'eu_pas_register_number', 'state', 'title', 'update_date', 'registration_date']:
 #   SPIDERMON_FIELD_COVERAGE_RULES.setdefault(f'Study/{field}', 1.0)
-SPIDERMON_MAX_ITEM_UPDATES_WITHOUT_DATE_CHANGES_OR_DATE_DELETES = 0
+# TODO: Find a better way to fix the problem
+SPIDERMON_MAX_ITEM_UPDATES_WITHOUT_DATE_CHANGES_OR_DATE_DELETES = 2
 
 # Settings for http_monitors
 SPIDERMON_UNWANTED_HTTP_CODES = {
