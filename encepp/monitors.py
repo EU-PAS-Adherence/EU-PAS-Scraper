@@ -45,7 +45,7 @@ class UpdatedItemsMonitor(Monitor):
         item_updates_expected = self.data.crawler.settings.get(
             'SPIDERMON_MAX_ITEM_UPDATES_WITHOUT_DATE_CHANGES_OR_DATE_DELETES')
 
-        msg = f'Found {item_updates} item(s) without date changes and {item_date_deletes} item(s) with deleted dates, but expected {item_updates_expected} item(s)'
+        msg = f'Found {item_updates} updated item(s) without date changes and {item_date_deletes} updated item(s) with deleted dates, but only expect/tolerate {item_updates_expected} of such item(s)'
         self.assertTrue(item_updates + item_date_deletes <=
                         item_updates_expected, msg=msg)
 

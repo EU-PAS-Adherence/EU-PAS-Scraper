@@ -1,5 +1,4 @@
 import os
-import sys
 
 from scrapy.commands.crawl import Command as CrawlCommand
 from scrapy.exceptions import UsageError
@@ -78,4 +77,3 @@ class Command(CrawlCommand):
         print(f'All Monitors Successful: {monitor_success}')
         if not monitor_success:
             self.exitcode = 1
-        sys.exit(self.exitcode)

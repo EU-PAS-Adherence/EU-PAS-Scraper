@@ -102,6 +102,9 @@ class ItemHistoryComparer:
             else:
                 self.crawler.stats.inc_value(
                     'item_history_comparer/updated_item_without_changed_date_count')
+                if not difference and deleted:
+                    self.crawler.stats.inc_value(
+                        'item_history_comparer/updated_item_without_changed_date_count/only_deletions')
                 updates_dict.setdefault(self.changed_date_key, False)
 
             updates_dict.setdefault(
