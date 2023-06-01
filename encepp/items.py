@@ -34,7 +34,8 @@ def serialize_encepp_document_url(x: str, empty_url_name: str = 'Empty Url') -> 
 
 class Study(item.Item):
     url = item.Field()
-    eu_pas_register_number = item.Field(serializer=serialize_id)
+    eu_pas_register_number = item.Field(
+        serializer=serialize_id, primary_key=True, sql_type=int)
     state = item.Field()
     title = item.Field()
     update_date = item.Field(serializer=serialize_date)
@@ -62,17 +63,17 @@ class Study(item.Item):
     final_study_date_planed = item.Field(serializer=serialize_date)
     final_study_date_actual = item.Field(serializer=serialize_date)
     funding_companies_names = item.Field()
-    funding_companies_percentage = item.Field()
+    funding_companies_percentage = item.Field(sql_type=int)
     funding_charities_names = item.Field()
-    funding_charities_percentage = item.Field()
+    funding_charities_percentage = item.Field(sql_type=int)
     funding_government_body_names = item.Field()
-    funding_government_body_percentage = item.Field()
+    funding_government_body_percentage = item.Field(sql_type=int)
     funding_research_councils_names = item.Field()
-    funding_research_councils_percentage = item.Field()
+    funding_research_councils_percentage = item.Field(sql_type=int)
     funding_eu_scheme_names = item.Field()
-    funding_eu_scheme_percentage = item.Field()
+    funding_eu_scheme_percentage = item.Field(sql_type=int)
     funding_other_names = item.Field()
-    funding_other_percentage = item.Field()
+    funding_other_percentage = item.Field()  # List of ints
     substance_atc = item.Field()
     substance_inn = item.Field()
     medical_conditions = item.Field()
@@ -80,7 +81,7 @@ class Study(item.Item):
     age_population = item.Field()
     sex_population = item.Field()
     other_population = item.Field()
-    number_of_subjects = item.Field()
+    number_of_subjects = item.Field(sql_type=int)
     uses_established_data_source = item.Field()
     data_source_types = item.Field()
     data_sources_registered_with_encepp = item.Field()
@@ -98,6 +99,6 @@ class Study(item.Item):
     result_document_url = item.Field(serializer=serialize_encepp_document_url)
     latest_result_document_url = item.Field(
         serializer=serialize_encepp_document_url)
-    references = item.Field()
+    references = item.Field(sql_name='document_references')
     other_documents_url = item.Field(
         serializer=lambda x: list(map(serialize_encepp_document_url, x)))

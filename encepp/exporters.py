@@ -16,7 +16,12 @@ from scrapy.spiders import Spider
 
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime
+import re
+import sqlite3
 from typing import List
+
+from encepp.items import Study
+from itemadapter.adapter import ItemAdapter
 
 
 def uri_params(params, spider: Spider):
@@ -80,9 +85,9 @@ class XlsxItemExporter(BaseItemExporter):
         elif isinstance(value, Iterable):
             return self.seperator.join(map(str, value))
         elif isinstance(value, datetime):
-            return value.strptime(self.datetime_format)
+            return value.strftime(self.datetime_format)
         elif isinstance(value, date):
-            return value.strptime(self.date_format)
+            return value.strftime(self.date_format)
         else:
             return str(value)
 
@@ -128,8 +133,9 @@ class XlsxItemExporter(BaseItemExporter):
         FEED_EXPORT_FIELDS setting.
         '''
         if self.fields_to_export is None:
+            adapter = ItemAdapter(item)
             self.fields_to_export = dict(
-                zip(item.fields.keys(), self._snake_case_to_upper_case(item.fields.keys())))
+                zip(list(adapter.field_names()), self._snake_case_to_upper_case(list(adapter.field_names()))))
         elif isinstance(self.fields_to_export, list):
             self.fields_to_export = dict(
                 zip(self.fields_to_export, self._snake_case_to_upper_case(self.fields_to_export)))
@@ -141,3 +147,107 @@ class XlsxItemExporter(BaseItemExporter):
             if self.include_counter_column:
                 row = [''] + row
             self.sheet.append(row)
+
+
+class SQLiteItemExporter(BaseItemExporter):
+
+    type_map = {
+        str: 'TEXT',
+        int: 'INTEGER',
+        float: 'NUMERIC'
+    }
+
+    def __init__(
+        self,
+        file,
+        join_multivalued='; ',
+        default_value=None,
+        db_name='studies',
+        date_format='YYYY-MM-DD',
+        datetime_format='YYYY-MM-DD HH:MM:SS',
+        **kwargs
+    ):
+        self._configure(kwargs, dont_fail=True)
+
+        self.default_value = default_value
+        self.seperator = join_multivalued
+        self.date_format = date_format
+        self.datetime_format = datetime_format
+        self.db_name = db_name
+
+        self.connection = sqlite3.connect(file.name)
+        self.cursor = self.connection.cursor()
+
+        self.regex = re.compile(r"[^a-z,A-Z,0-9,_]")
+        self.table_created = False
+
+    def serialize_field(self, field, column_name, value):
+        serializer = field.get('serializer', lambda x: x)
+        return self._default_serializer(serializer(value))
+
+    def _default_serializer(self, value):
+        '''
+        Provide a valid SQL serialization for value.
+
+        This method serializes the item fields trying to respect their type.
+        Strings, numbers, booleans and dates are handled by openpyxl and they
+        should appear with proper formatting in the output file. Other types
+        are converted into a string. You can
+        Individual scrapy.Item fields can provide a custom serializer too:
+            my_field = Field(serializer=custom_serializer)
+        '''
+
+        if isinstance(value, Iterable) and not isinstance(value, str):
+            return self.seperator.join(map(str, value))
+        elif isinstance(value, datetime):
+            return value.strftime(self.datetime_format)
+        elif isinstance(value, date):
+            return value.strftime(self.date_format)
+        else:
+            return value
+
+    def export_item(self, item):
+
+        fields = sorted(list(self._get_serialized_fields(
+            item, default_value=self.default_value, include_empty=True
+        )), key=lambda x: x[0])
+
+        names = [self._get_sql_name(name) for name, _ in fields]
+        values = [value for _, value in fields]
+
+        if not self.table_created:
+            self._create_table(names)
+            self.table_created = True
+
+        self.cursor.execute(f"INSERT INTO {self.db_name} ({','.join(names)}) VALUES ({','.join(['?'] * len(values))});", [
+            *values
+        ])
+        self.connection.commit()
+
+    def _get_field_meta(self, field_name):
+        try:
+            meta = ItemAdapter.get_field_meta_from_class(Study, field_name)
+        except KeyError:
+            meta = {}
+        return meta
+
+    def _get_sql_name(self, field_name):
+        return self._get_field_meta(field_name).get('sql_name', self.regex.sub('', field_name))
+
+    def _create_table(self, names):
+        sql_cols = []
+        for name in names:
+            meta = self._get_field_meta(name)
+            primary = meta.get('primary_key', False)
+            sql_type = meta.get('sql_type', str)
+            sql_name = self._get_sql_name(name)
+            sql_cols.append(
+                f'{sql_name} {self.type_map.get(sql_type, "BLOB")}{" PRIMARY KEY NOT NULL" if primary else ""}')
+        print(
+            f"CREATE TABLE IF NOT EXISTS {self.db_name} ({', '.join(sql_cols)});")
+        self.cursor.execute(
+            f"CREATE TABLE IF NOT EXISTS {self.db_name} ({', '.join(sql_cols)});")
+
+    def finish_exporting(self):
+        self.connection.commit()
+        self.connection.close()

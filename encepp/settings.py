@@ -212,7 +212,8 @@ SPIDERMON_MAX_ITEM_VALIDATION_ERRORS = 0
 # for field in ['url', 'eu_pas_register_number', 'state', 'title', 'update_date', 'registration_date']:
 #   SPIDERMON_FIELD_COVERAGE_RULES.setdefault(f'Study/{field}', 1.0)
 # TODO: Find a better way to fix the problem
-SPIDERMON_MAX_ITEM_UPDATES_WITHOUT_DATE_CHANGES_OR_DATE_DELETES = 2
+SPIDERMON_MAX_ITEM_UPDATES_WITHOUT_DATE_CHANGES_OR_DATE_DELETES = 0
+SPIDERMON_ACCEPT_ITEM_UPDATES_WITH_DATE_CHANGES_WHEN_ONLY_ATTRIBUTES_DELETED = True
 
 # Settings for http_monitors
 SPIDERMON_UNWANTED_HTTP_CODES = {
@@ -334,11 +335,23 @@ FEEDS = {
             'join_multivalued': '; ',
         }
     },
+    f'{OUTPUT_DIRECTORY}/studies.db': {
+        'format': 'sqlite3',
+        'overwrite': True,
+        'item_export_kwargs': {
+            'join_multivalued': '; ',
+            'default_value': '',
+            'db_name': 'studies',
+            'date_format': 'YYYY-MM-DD',
+            'datetime_format': 'YYYY-MM-DD HH:MM:SS',
+        },
+    }
 }
 
 # This custom exporter is needed for xlsx export with the -o (output) command
 FEED_EXPORTERS = {
     'xlsx': 'encepp.exporters.XlsxItemExporter',
+    'sqlite3': 'encepp.exporters.SQLiteItemExporter'
 }
 
 # This setting tells the exporters if they should export empty item fields

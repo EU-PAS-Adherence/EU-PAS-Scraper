@@ -3,9 +3,11 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 
-import re
 from difflib import SequenceMatcher
+import re
+
 from scrapy import spiders, item, exceptions
+from itemadapter.adapter import ItemAdapter
 
 # NOTE: pipelines only work with one type of spider (EU_PAS_Extractor)
 # and item (Study) and it is assumed that there is only one type of each!
@@ -17,10 +19,11 @@ class DuplicatesPipeline:
         self.ids_seen = set()
 
     def process_item(self, item: item.Item, _: spiders.Spider):
-        if item.get('eu_pas_register_number') in self.ids_seen:
+        adapter = ItemAdapter(item)
+        if (id := adapter.get('eu_pas_register_number')) in self.ids_seen:
             raise exceptions.DropItem(f'Duplicate item found: {item!r}')
 
-        self.ids_seen.add(item.get('eu_pas_register_number'))
+        self.ids_seen.add(id)
         return item
 
 
@@ -62,6 +65,7 @@ class MetaFieldPipeline:
     def filter_junk_words(self, s):
         return re.sub(r'\w+', self.sub_junk_words, s.lower())
 
+    # TODO: Change or remove; Use adapter
     def process_item(self, item: item.Item, _: spiders.Spider):
         if not self.enabled:
             return item

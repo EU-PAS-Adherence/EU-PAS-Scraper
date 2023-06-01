@@ -38,8 +38,13 @@ class UpdatedItemsMonitor(Monitor):
 
     @monitors.name("Expected item updates without date changes or deletes don't exceed treshold")
     def test_extracted_number_of_items_equals_expected(self):
+        ignore_only_deletions = self.data.crawler.settings.get(
+            'SPIDERMON_ACCEPT_ITEM_UPDATES_WITH_DATE_CHANGES_WHEN_ONLY_ATTRIBUTES_DELETED', False)
+
         item_updates = getattr(
-            self.data.stats, 'item_history_comparer/updated_item_without_changed_date_count', 0)
+            self.data.stats, 'item_history_comparer/updated_item_without_changed_date_count', 0) - (getattr(
+                self.data.stats, 'item_history_comparer/updated_item_without_changed_date_count/only_deletions', 0)
+                if ignore_only_deletions else 0)
         item_date_deletes = getattr(
             self.data.stats, 'item_history_comparer/updated_item_with_deleted_date_count', 0)
         item_updates_expected = self.data.crawler.settings.get(
