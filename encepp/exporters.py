@@ -34,7 +34,6 @@ def uri_params(params, spider: Spider):
 
 
 class XlsxItemExporter(BaseItemExporter):
-    default_date_format = 'YYYY-MM-DD'
 
     def __init__(
         self,
@@ -44,8 +43,8 @@ class XlsxItemExporter(BaseItemExporter):
         join_multivalued='; ',
         default_value=None,
         sheet_name='PAS Studies',
-        date_format='YYYY-MM-DD',
-        datetime_format='YYYY-MM-DD HH:MM:SS',
+        date_format='%Y-%m-%d',
+        datetime_format='%Y-%m-%d %H:%M:%S',
         **kwargs
     ):
         self._configure(kwargs, dont_fail=True)
@@ -154,7 +153,7 @@ class SQLiteItemExporter(BaseItemExporter):
     type_map = {
         str: 'TEXT',
         int: 'INTEGER',
-        float: 'NUMERIC'
+        float: 'NUMERIC',
     }
 
     def __init__(
@@ -162,9 +161,9 @@ class SQLiteItemExporter(BaseItemExporter):
         file,
         join_multivalued='; ',
         default_value=None,
-        db_name='studies',
-        date_format='YYYY-MM-DD',
-        datetime_format='YYYY-MM-DD HH:MM:SS',
+        db_name='study',
+        date_format='%Y-%m-%d',
+        datetime_format='%Y-%m-%d %H:%M:%S',
         **kwargs
     ):
         self._configure(kwargs, dont_fail=True)
@@ -239,12 +238,11 @@ class SQLiteItemExporter(BaseItemExporter):
         for name in names:
             meta = self._get_field_meta(name)
             primary = meta.get('primary_key', False)
+            required = meta.get('required', False)
             sql_type = meta.get('sql_type', str)
             sql_name = self._get_sql_name(name)
             sql_cols.append(
-                f'{sql_name} {self.type_map.get(sql_type, "BLOB")}{" PRIMARY KEY NOT NULL" if primary else ""}')
-        print(
-            f"CREATE TABLE IF NOT EXISTS {self.db_name} ({', '.join(sql_cols)});")
+                f'{sql_name} {self.type_map.get(sql_type, "BLOB")}{" PRIMARY KEY" if primary else ""}{" NOT NULL" if required else ""}')
         self.cursor.execute(
             f"CREATE TABLE IF NOT EXISTS {self.db_name} ({', '.join(sql_cols)});")
 

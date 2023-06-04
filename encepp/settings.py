@@ -311,8 +311,8 @@ FEEDS = {
             'join_multivalued': '; ',
             'default_value': '',
             'sheet_name': 'PAS Studies',
-            'date_format': 'YYYY-MM-DD',
-            'datetime_format': 'YYYY-MM-DD HH:MM:SS',
+            'date_format': '%Y-%m-%d',
+            'datetime_format': '%Y-%m-%d %H:%M:%S',
         },
     },
     f'{OUTPUT_DIRECTORY}/{get_item_name()}.json': {
@@ -335,15 +335,15 @@ FEEDS = {
             'join_multivalued': '; ',
         }
     },
-    f'{OUTPUT_DIRECTORY}/studies.db': {
+    f'{OUTPUT_DIRECTORY}/data.db': {
         'format': 'sqlite3',
         'overwrite': True,
         'item_export_kwargs': {
             'join_multivalued': '; ',
             'default_value': '',
-            'db_name': 'studies',
-            'date_format': 'YYYY-MM-DD',
-            'datetime_format': 'YYYY-MM-DD HH:MM:SS',
+            'db_name': 'study',
+            'date_format': '%Y-%m-%d',
+            'datetime_format': '%Y-%m-%d %H:%M:%S',
         },
     }
 }
