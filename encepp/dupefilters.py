@@ -3,6 +3,7 @@ from encepp.spiders.encepp_spider import EU_PAS_Extractor
 from scrapy import Request, Spider
 from scrapy.dupefilters import RFPDupeFilter
 
+
 class EupasDupeFilter(RFPDupeFilter):
 
     def log(self, request: Request, spider: Spider) -> None:
