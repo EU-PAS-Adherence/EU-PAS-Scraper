@@ -25,6 +25,17 @@ class ItemHistoryComparer:
     changed_eupas_key = '$CHANGED_EUPAS'
     changed_url_key = '$CHANGED_URL'
     deleted_fields_key = '$DELETED_FIELDS'
+    duplicate_fields_key = '$DUPLICATE_SEARCH_ENTRY'
+
+    # There is currently only one study with duplicate entries with two different titles
+    # The other fields could also be affected, but not at this moment
+    # CAVE: Don't add other fields to this set if they aren't shown in the search results
+    duplicate_allowed_changed_fields = {
+        # 'status',
+        # 'eu_pas_register_number',
+        'title',
+        # 'update_date',
+    }
 
     # NOTE: If the meta field pipeline is used: all meta field names get ignored
     def __init__(self, file_path, output_path, crawler, has_meta_fields=False):
@@ -63,7 +74,7 @@ class ItemHistoryComparer:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open('w', encoding='UTF-8') as f:
                 json.dump(sorted(
-                    self.updates, key=lambda x: not x[self.changed_date_key]), f, indent='\t', sort_keys=True)
+                    self.updates, key=lambda x: x[self.changed_date_key]), f, indent='\t', sort_keys=True)
 
     def tuplify(self, item):
         return map(lambda x: (x[0], tuple(x[1]) if isinstance(x[1], list) else x[1]), item.items())
@@ -81,6 +92,8 @@ class ItemHistoryComparer:
             self.crawler.stats.inc_value(
                 f'item_history_comparer/item_with_new_register_number_count/eupas_{new_study["eu_pas_register_number"]}')
             return
+
+        duplicate = self.crawler.stats.get_value(f'dupefilter/filtered/search_entries/eupas_{new_study["eu_pas_register_number"]}', 0) > 0
 
         old_study = old_studies[0]
 
@@ -105,8 +118,12 @@ class ItemHistoryComparer:
                 if not difference and deleted:
                     self.crawler.stats.inc_value(
                         'item_history_comparer/updated_item_without_changed_date_count/only_deletions')
+                if duplicate and {d[0] for d in difference}.issubset(self.duplicate_allowed_changed_fields):
+                    self.crawler.stats.inc_value(
+                        'item_history_comparer/updated_item_without_changed_date_count/duplicate_related')
                 updates_dict.setdefault(self.changed_date_key, False)
 
+            updates_dict.setdefault(self.duplicate_fields_key, duplicate)
             updates_dict.setdefault(
                 self.changed_eupas_key, new_study["eu_pas_register_number"])
             updates_dict.setdefault(self.changed_url_key, new_study["url"])

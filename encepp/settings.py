@@ -120,7 +120,7 @@ EXTENSIONS = {
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
     'encepp.pipelines.DuplicatesPipeline': 0,
-    'encepp.pipelines.MetaFieldPipeline': 100,
+    'encepp.pipelines.MetaFieldPipeline': 100,  # TODO: remove?
     'spidermon.contrib.scrapy.pipelines.ItemValidationPipeline': 800,
 }
 ##################################
@@ -261,6 +261,7 @@ ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH = f'{OUTPUT_DIRECTORY}/updates.json'
 ##################################
 #     ITEM PIPELINE SETTINGS     #
 ##################################
+# TODO: remove?
 METAFIELD_ENABLED = True
 METAFIELD_GROUP_SIMILAR_FIELDS_NAMES = [
     'centre_name', 'funding_companies_names']
@@ -376,9 +377,16 @@ FEED_STORE_EMPTY = True
 FEED_URI_PARAMS = 'encepp.exporters.uri_params'
 ##################################
 
+##################################
+#           DUPEFILTER           #
+##################################
+
+DUPEFILTER_CLASS = 'encepp.dupefilters.EupasDupeFilter'
+
 # Display all duplicates by turning DUPEFILTER_DEBUG on
 # LOG_LEVEL has to be Debug!
 # DUPEFILTER_DEBUG = True
+
 # Following duplicates were found last time this was tested:
 #   https://www.encepp.eu/encepp/viewResource.htm;?id=47194
 #   https://www.encepp.eu/encepp/viewResource.htm;?id=50667

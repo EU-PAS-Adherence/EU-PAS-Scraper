@@ -164,7 +164,15 @@ class EU_PAS_Extractor(spiders.Spider):
         study['update_date'] = data_row.xpath('./td[4]//text()').get().strip()
         study['url'] = url
 
-        return http.Request(url=url, callback=self.parse_details, meta={'dont_merge_cookies': not self.custom_settings.get('SAVE_PDF')}, cb_kwargs=dict(study=study))
+        return http.Request(
+            url=url,
+            callback=self.parse_details,
+            meta={
+                'dont_merge_cookies': not self.custom_settings.get('SAVE_PDF'),
+                'eupas_id': int(study['eu_pas_register_number'][5:])
+            },
+            cb_kwargs=dict(study=study)
+        )
 
     def parse_details(self, response: http.TextResponse, study: Study) -> Generator[Union[Study, http.Request], None, None]:
         ''' Parses the study details from all four tabs. Each tab will be processed by it's own method.
