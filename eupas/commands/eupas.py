@@ -3,14 +3,14 @@ import os
 from scrapy.commands.crawl import Command as CrawlCommand
 from scrapy.exceptions import UsageError
 
-from encepp.spiders.encepp_spider import EU_PAS_Extractor, RMP
+from eupas.spiders.eupas_spider import EU_PAS_Spider, RMP
 
 
 class Command(CrawlCommand):
 
     def add_options(self, parser):
         CrawlCommand.add_options(self, parser)
-        group = parser.add_argument_group(title="Custom Encepp Options")
+        group = parser.add_argument_group(title="Custom Eupas Options")
         group.add_argument(
             "-F",
             "--filter",
@@ -22,7 +22,7 @@ class Command(CrawlCommand):
             "--debug", action="store_true", help="enable debugging"
         )
         group.add_argument(
-            "--download-pdf", action="store_true", help="downloads a pdf file for each study detail page"
+            "-P", "--download-pdf", action="store_true", help="downloads a pdf file for each study detail page"
         )
 
     def process_options(self, args, opts):
@@ -62,15 +62,15 @@ class Command(CrawlCommand):
         return "[options]"
 
     def short_desc(self):
-        return "Run the Encepp spider"
+        return "Run the Eupas spider"
 
     def run(self, args, opts):
         if len(args) > 0:
             raise UsageError(
-                "running 'scrapy encepp' with additional arguments is not supported"
+                "running 'scrapy eupas' with additional arguments is not supported"
             )
 
-        new_args = [EU_PAS_Extractor.name]
+        new_args = [EU_PAS_Spider.name]
         super().run(new_args, opts)
 
         monitor_success = os.getenv('MONITOR_SUCCESS') == 'true'

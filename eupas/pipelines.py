@@ -9,7 +9,7 @@ import re
 from scrapy import spiders, item, exceptions
 from itemadapter.adapter import ItemAdapter
 
-# NOTE: pipelines only work with one type of spider (EU_PAS_Extractor)
+# NOTE: pipelines only work with one type of spider (EU_PAS_Spider)
 # and item (Study) and it is assumed that there is only one type of each!
 
 

@@ -1,4 +1,4 @@
-# Scrapy settings for encepp project
+# Scrapy settings for eupas project
 #
 # For simplicity, this file contains only settings considered important or
 # commonly used. You can find more settings consulting the documentation:
@@ -30,8 +30,8 @@ OUTPUT_DIRECTORY = (
 
 BOT_NAME = None
 
-SPIDER_MODULES = ['encepp.spiders']
-NEWSPIDER_MODULE = 'encepp.spiders'
+SPIDER_MODULES = ['eupas.spiders']
+NEWSPIDER_MODULE = 'eupas.spiders'
 
 # Set settings whose default value is deprecated to a future-proof value
 REQUEST_FINGERPRINTER_IMPLEMENTATION = '2.7'
@@ -112,15 +112,15 @@ EXTENSIONS = {
     'scrapy.extensions.memusage.MemoryUsage': None,
     'scrapy.extensions.memdebug.MemoryDebugger': None,
     'scrapy.extensions.statsmailer.Statsmailer': None,
-    'encepp.extensions.ItemHistoryComparer': 300,
+    'eupas.extensions.ItemHistoryComparer': 300,
     'spidermon.contrib.scrapy.extensions.Spidermon': 500,
 }
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-    'encepp.pipelines.DuplicatesPipeline': 0,
-    'encepp.pipelines.MetaFieldPipeline': 100,  # TODO: remove?
+    'eupas.pipelines.DuplicatesPipeline': 0,
+    'eupas.pipelines.MetaFieldPipeline': 100,  # TODO: remove?
     'spidermon.contrib.scrapy.pipelines.ItemValidationPipeline': 800,
 }
 ##################################
@@ -195,7 +195,7 @@ CLOSESPIDER_ERRORCOUNT = 5
 
 # Enable and configure Spidermon Extension (https://spidermon.readthedocs.io)
 SPIDERMON_ENABLED = True
-SPIDERMON_VALIDATION_SCHEMAS = ['encepp/validators/study_schema.json']
+SPIDERMON_VALIDATION_SCHEMAS = ['eupas/validators/study_schema.json']
 
 # Settings for log_monitors
 SPIDERMON_MAX_WARNINGS = 10
@@ -243,12 +243,12 @@ SPIDERMON_SPIDER_CLOSE_MONITORS = (
     # Monitors different item related tests
     # Monitors request related tests
     # Monitors other tests
-    'encepp.monitors.SpiderCloseMonitorSuite'
+    'eupas.monitors.SpiderCloseMonitorSuite'
 )
 
 SPIDERMON_REPORT_TEMPLATE = 'reports/email/monitors/result.jinja'
 SPIDERMON_REPORT_CONTEXT = {
-    'report_title': 'Encepp File Report'
+    'report_title': 'Eupas Spider File Report'
 }
 SPIDERMON_REPORT_FILENAME = f'{OUTPUT_DIRECTORY}/report.html'
 
@@ -280,14 +280,14 @@ LOG_FORMAT = '%(levelname)s: %(message)s'
 LOG_LEVEL = 'INFO'
 
 # Here we can define custom scrapy contracts for unit testing (not so great)
-# Can be checked with the following command: scrapy check encepp
+# Can be checked with the following command: scrapy check eupas
 SPIDER_CONTRACTS = {
-    'encepp.contracts.PostEncodedContract': 1,
+    'eupas.contracts.PostEncodedContract': 1,
 }
 
 # Module with custom commands
 # See: https://docs.scrapy.org/en/latest/topics/commands.html#custom-project-commands
-COMMANDS_MODULE = 'encepp.commands'
+COMMANDS_MODULE = 'eupas.commands'
 ##################################
 
 ##################################
@@ -351,8 +351,8 @@ FEEDS = {
 
 # This custom exporter is needed for xlsx export with the -o (output) command
 FEED_EXPORTERS = {
-    'xlsx': 'encepp.exporters.XlsxItemExporter',
-    'sqlite3': 'encepp.exporters.SQLiteItemExporter'
+    'xlsx': 'eupas.exporters.XlsxItemExporter',
+    'sqlite3': 'eupas.exporters.SQLiteItemExporter'
 }
 
 # This setting tells the exporters if they should export empty item fields
@@ -374,14 +374,14 @@ FEED_STORE_EMPTY = True
 # FEED_EXPORT_FIELDS = None
 # FEED_EXPORT_FIELDS = ['eu_pas_register_number', 'state', 'title']
 # FEED_EXPORT_FIELDS = {'eu_pas_register_number': 'ID', 'url': 'URL'}
-FEED_URI_PARAMS = 'encepp.exporters.uri_params'
+FEED_URI_PARAMS = 'eupas.exporters.uri_params'
 ##################################
 
 ##################################
 #           DUPEFILTER           #
 ##################################
 
-DUPEFILTER_CLASS = 'encepp.dupefilters.EupasDupeFilter'
+DUPEFILTER_CLASS = 'eupas.dupefilters.EupasDupeFilter'
 
 # Display all duplicates by turning DUPEFILTER_DEBUG on
 # LOG_LEVEL has to be Debug!

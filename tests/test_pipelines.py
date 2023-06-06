@@ -1,7 +1,7 @@
 import pytest
 from scrapy import exceptions
 
-from encepp.pipelines import DuplicatesPipeline
+from eupas.pipelines import DuplicatesPipeline
 
 
 @pytest.fixture()

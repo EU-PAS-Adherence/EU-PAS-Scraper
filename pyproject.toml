@@ -3,7 +3,7 @@ requires = ["setuptools>=61.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "encepp"
+name = "eupas"
 authors = [
     {name = "Pedram Ramezani", email = "pedram.ramezani@charite.de"},
 ]
@@ -37,7 +37,7 @@ include = ["*"]
 exclude = ["tests"]
 
 [tool.setuptools.dynamic]
-version = {attr = "encepp.settings.PACKAGE_VERSION"}
+version = {attr = "eupas.settings.PACKAGE_VERSION"}
 # NOTE: Can't go outside of EnceppScrapy:
 # readme = {file = ["../README.md"], content-type = "text/markdown"}
 dependencies = {file = ["requirements.txt"]}
@@ -50,13 +50,13 @@ test = {file = ["requirements.testing.txt"]}
 
 [tool.pytest.ini_options]
 addopts = '''
-    --cov=encepp
+    --cov=eupas
     --cov-report=term-missing
     --cov-report=xml:coverage/coverage.xml
     --cov-report=html:coverage/web
 '''
 testpaths = ["tests",]
-pythonpath = ["encepp",]
+pythonpath = ["eupas",]
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning",

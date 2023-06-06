@@ -1,9 +1,9 @@
 import pytest
 
-from encepp.items import serialize_date
-from encepp.items import serialize_encepp_document_url
-from encepp.items import serialize_id
-from encepp.items import serialize_primary_scope
+from eupas.items import serialize_date
+from eupas.items import serialize_encepp_document_url
+from eupas.items import serialize_id
+from eupas.items import serialize_primary_scope
 
 
 @pytest.mark.parametrize('id, expected', [

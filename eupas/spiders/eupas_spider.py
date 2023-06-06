@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 from typing import List, Generator, Union
 
-from encepp.items import Study
+from eupas.items import Study
 
 
 class RMP(Enum):
@@ -26,14 +26,14 @@ class RMP(Enum):
     non_EU_RPM = 5
 
 
-class EU_PAS_Extractor(spiders.Spider):
+class EU_PAS_Spider(spiders.Spider):
     '''
     This Scrapy Spider extracts study data from the EU PAS Register.
     '''
 
     # Overriden Spider Settings
     # name is used to start a spider with the scrapy cmd-tool
-    name = 'encepp'
+    name = 'eupas'
     # custom_settings contains own settings, but can also override the values in settings.py
     custom_settings = {
         'PROGRESS_LOGGING': False,
@@ -164,12 +164,14 @@ class EU_PAS_Extractor(spiders.Spider):
         study['update_date'] = data_row.xpath('./td[4]//text()').get().strip()
         study['url'] = url
 
+        eupas_id = int(study['eu_pas_register_number'][5:])
         return http.Request(
             url=url,
             callback=self.parse_details,
             meta={
                 'dont_merge_cookies': not self.custom_settings.get('SAVE_PDF'),
-                'eupas_id': int(study['eu_pas_register_number'][5:])
+                'eupas_id': eupas_id,
+                'cookiejar': eupas_id
             },
             cb_kwargs=dict(study=study)
         )
@@ -190,7 +192,7 @@ class EU_PAS_Extractor(spiders.Spider):
 
         if self.custom_settings.get('SAVE_PDF'):
             pdf_url = f"{self.pdf_base_url}&&lastU={study['update_date']}&createdOn={study['registration_date']}"
-            yield http.Request(url=pdf_url, callback=self.save_pdf, dont_filter=True, cb_kwargs=dict(study=study))
+            yield http.Request(url=pdf_url, callback=self.save_pdf, dont_filter=True, cb_kwargs=dict(study=study), meta={'cookiejar': response.meta['cookiejar']})
 
         self.parse_admin_details(details=response.xpath(
             './/*[@id="1"]')[0], study=study)

@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from encepp.extensions import SingleJsonItemStringExporter, ItemHistoryComparer
-from encepp.items import Study
+from eupas.extensions import SingleJsonItemStringExporter, ItemHistoryComparer
+from eupas.items import Study
 
 
 @pytest.fixture(params=[1234, 999, 'Hello'])

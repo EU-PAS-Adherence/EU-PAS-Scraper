@@ -103,7 +103,7 @@ class SetFailVariable(Action):
 
 class SpiderCloseMonitorSuite(MonitorSuite):
 
-    name = 'Encepp Checker'
+    name = 'Eupas Checker'
 
     log_monitors = [
         WarningCountMonitor,

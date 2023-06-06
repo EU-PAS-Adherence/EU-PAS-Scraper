@@ -1,12 +1,12 @@
 from scrapy import signals
-from scrapy.exceptions import NotConfigured
+from scrapy.exceptions import NotConfigured, NotSupported
 from scrapy.exporters import BaseItemExporter
 from scrapy.utils.serialize import ScrapyJSONEncoder
 
 import json
 from pathlib import Path
 
-from encepp.pipelines import MetaFieldPipeline
+from eupas.pipelines import MetaFieldPipeline
 
 
 class SingleJsonItemStringExporter(BaseItemExporter):
@@ -84,6 +84,7 @@ class ItemHistoryComparer:
         if self.has_meta_fields:
             new_study = dict(filter(
                 lambda item: item[0][0] not in MetaFieldPipeline.meta_field_chars, new_study.items()))
+        
         old_studies = list(filter(
             lambda x: x['eu_pas_register_number'] == new_study['eu_pas_register_number'], self.studies))
         if not old_studies:
@@ -92,10 +93,15 @@ class ItemHistoryComparer:
             self.crawler.stats.inc_value(
                 f'item_history_comparer/item_with_new_register_number_count/eupas_{new_study["eu_pas_register_number"]}')
             return
+        elif len(old_studies) > 1:
+            raise NotSupported
 
         duplicate = self.crawler.stats.get_value(f'dupefilter/filtered/search_entries/eupas_{new_study["eu_pas_register_number"]}', 0) > 0
 
         old_study = old_studies[0]
+        if self.has_meta_fields:
+            old_study = dict(filter(
+                lambda item: item[0][0] not in MetaFieldPipeline.meta_field_chars, old_study.items()))
 
         difference = frozenset(self.tuplify(new_study)) - \
             frozenset(self.tuplify(old_study))

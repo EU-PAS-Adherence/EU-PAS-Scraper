@@ -5,8 +5,8 @@ from scrapy import spiders
 from scrapy.settings import Settings
 from scrapy.crawler import Crawler
 
-from encepp.spiders.encepp_spider import EU_PAS_Extractor
-import encepp.settings as settings_module
+from eupas.spiders.eupas_spider import EU_PAS_Spider
+import eupas.settings as settings_module
 
 
 @pytest.fixture()
@@ -38,4 +38,4 @@ def project_settings():
 
 @pytest.fixture()
 def crawler(project_settings):
-    return Crawler(EU_PAS_Extractor, project_settings)
+    return Crawler(EU_PAS_Spider, project_settings)

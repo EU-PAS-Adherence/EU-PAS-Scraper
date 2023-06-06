@@ -20,7 +20,7 @@ import re
 import sqlite3
 from typing import List
 
-from encepp.items import Study
+from eupas.items import Study
 from itemadapter.adapter import ItemAdapter
 
 
