@@ -218,7 +218,7 @@ class SQLiteItemExporter(BaseItemExporter):
             self._create_table(names)
             self.table_created = True
 
-        self.cursor.execute(f"INSERT INTO {self.db_name} ({','.join(names)}) VALUES ({','.join(['?'] * len(values))});", [
+        self.cursor.execute(self.insert_sql, [
             *values
         ])
         self.connection.commit()
@@ -245,6 +245,7 @@ class SQLiteItemExporter(BaseItemExporter):
                 f'{sql_name} {self.type_map.get(sql_type, "BLOB")}{" PRIMARY KEY" if primary else ""}{" NOT NULL" if required else ""}')
         self.cursor.execute(
             f"CREATE TABLE IF NOT EXISTS {self.db_name} ({', '.join(sql_cols)});")
+        self.insert_sql = f"INSERT INTO {self.db_name} ({','.join(names)}) VALUES ({','.join(['?'] * len(names))});"
 
     def finish_exporting(self):
         self.connection.commit()
