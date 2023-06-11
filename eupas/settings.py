@@ -341,7 +341,7 @@ FEEDS = {
         'overwrite': True,
         'item_export_kwargs': {
             'join_multivalued': '; ',
-            'default_value': '',
+            'default_value': None,
             'db_name': 'study',
             'date_format': '%Y-%m-%d',
             'datetime_format': '%Y-%m-%d %H:%M:%S',
