@@ -42,7 +42,7 @@ class XlsxItemExporter(BaseItemExporter):
         include_counter_column=True,
         join_multivalued='; ',
         default_value=None,
-        sheet_name='PAS Studies',
+        sheet_name='Items',
         date_format='%Y-%m-%d',
         datetime_format='%Y-%m-%d %H:%M:%S',
         **kwargs

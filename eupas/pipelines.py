@@ -27,6 +27,7 @@ class DuplicatesPipeline:
         return item
 
 
+# TODO: Remove
 class MetaFieldPipeline:
     # NOTE: The meta field chars shouldn't be the first letter of any actual field [a-z, A-Z]
     # Furthermore _ can be used but it will be disappear in excel because snake_case
