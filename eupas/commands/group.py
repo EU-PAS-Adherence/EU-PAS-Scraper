@@ -1,4 +1,4 @@
-from difflib import SequenceMatcher, get_close_matches
+from difflib import get_close_matches
 import json
 import logging
 from pathlib import Path
@@ -14,8 +14,7 @@ from eupas.items import Study
 
 class Command(ScrapyCommand):
 
-    method = 1
-    include_own_group_name = False
+    include_own_group_name = True
 
     requires_project = True
 
@@ -53,7 +52,7 @@ class Command(ScrapyCommand):
     def process_options(self, args, opts):
         ScrapyCommand.process_options(self, args, opts)
         self.input_path = Path(opts.input or "")
-        if not (self.input_path.exists() and self.input_path.is_file()):
+        if not self.input_path.is_file():
             raise UsageError(
                 "Invalid -i value, use a valid path to a file", print_help=False)
         if self.input_path.suffix != '.json':
@@ -61,7 +60,7 @@ class Command(ScrapyCommand):
                 "Invalid -i value, json file expected", print_help=False)
 
         self.output_folder = Path(opts.output or "")
-        if self.output_folder.exists() and not self.output_folder.is_dir():
+        if not self.output_folder.is_dir():
             raise UsageError(
                 "Invalid -i value, use a valid path to a folder", print_help=False)
         self.output_folder.mkdir(parents=True, exist_ok=True)
@@ -80,22 +79,63 @@ class Command(ScrapyCommand):
         return "Group extracted row value"
 
     def serialize(self, s):
-        return self.filter_multiple_spaces(self.filter_junk_words(self.filter_junk_chars(str(s).lower()))).strip()
+        def filter_multiple_spaces(s):
+            return re.sub(r'\s+', ' ', s)
 
-    def filter_multiple_spaces(self, s):
-        return re.sub(r'\s+', ' ', s)
+        def filter_junk_chars(s):
+            return re.sub(rf'[{self.junk_chars}]', '', s)
 
-    def filter_junk_chars(self, s):
-        return re.sub(rf'[{self.junk_chars}]', '', s)
-
-    def filter_junk_words(self, s):
         def sub_junk_words(m):
             return '' if m.group() in self.junk_words else m.group()
-        return re.sub(r'\w+', sub_junk_words, s)
+
+        def filter_junk_words(s):
+            return re.sub(r'\w+', sub_junk_words, s)
+
+        return filter_multiple_spaces(filter_junk_words(filter_junk_chars(str(s).lower()))).strip()
+
+    def group_with_difflib(self, field_name):
+        '''
+        Groups field_name using difflib get_close_matches.
+        This grouping algorithm isn't optimal.
+        It doesn't compare new values with already grouped values.
+        '''
+
+        class firstShowTuple(tuple):
+            '''
+            This class is utilized to pass the serialized value to difflib,
+            while storing the original value in the tuple for later retrieval
+            '''
+
+            def __str__(self) -> str:
+                return self.__getitem__(0).__str__()
+
+        groups = {}
+
+        values = {
+            firstShowTuple(
+                (self.serialize(study[field_name]), str(study[field_name])))
+            for study in self.studies
+            if field_name in study
+        }
+
+        while len(values) > 1:
+            val = values.pop()
+            matches = get_close_matches(
+                val, values, n=len(values), cutoff=self.cutoff)
+            values.difference_update(matches)
+            if self.include_own_group_name:
+                matches.append(val)
+            groups.setdefault(val[1], sorted([m[1] for m in matches]))
+
+        if len(values) == 1:
+            val = values.pop()
+            groups.setdefault(
+                val[1], [val[1]] if self.include_own_group_name else [])
+
+        return groups
 
     def run(self, args, opts):
         if len(args) == 0:
-            # args = Study.fields.keys()
             raise UsageError(
                 "running 'scrapy group' without additional arguments is not supported"
             )
@@ -107,71 +147,20 @@ class Command(ScrapyCommand):
         with self.input_path.open('r') as f:
             self.studies = json.load(f)
 
-        matcher = SequenceMatcher(isjunk=lambda x: x in self.junk_chars)
-
-        class firstShowTuple(tuple):
-            def __str__(self) -> str:
-                return self.__getitem__(0).__str__()
-
         workbook = Workbook()
+        workbook.remove(workbook.active)
 
         logger = logging.getLogger()
 
-        for i, field_name in enumerate(args):
-
-            groups = {}
-            sheet = workbook.create_sheet(field_name, i)
-
+        for field_name in args:
             logger.info(f'Grouping field: {field_name}')
 
-            if self.method == 1:
-                values = {
-                    firstShowTuple(
-                        (self.serialize(study[field_name]), str(study[field_name])))
-                    for study in self.studies
-                    if field_name in study
-                }
-
-                while len(values) > 1:
-                    val = values.pop()
-                    matches = get_close_matches(
-                        val, values, n=len(values), cutoff=self.cutoff)
-                    values.difference_update(matches)
-                    if self.include_own_group_name:
-                        matches.append(val)
-                    groups.setdefault(val[1], sorted([m[1] for m in matches]))
-                else:
-                    val = values.pop()
-                    groups.setdefault(
-                        val[1], [val[1]] if self.include_own_group_name else [])
-
-            elif self.method == 2:
-                values = {
-                    (self.serialize(study[field_name]), study[field_name])
-                    for study in self.studies
-                    if field_name in study
-                }
-
-                while len(values) > 1:
-                    val = values.pop()
-                    matcher.set_seq2(val[0])
-                    matches = []
-                    for other in values:
-                        matcher.set_seq1(other[0])
-                        if matcher.ratio() > self.cutoff:
-                            matches.append(other)
-                    values.difference_update(matches)
-                    if self.include_own_group_name:
-                        matches.append(val)
-                    groups.setdefault(val[1], sorted([m[1] for m in matches]))
-                else:
-                    val = values.pop()
-                    groups.setdefault(
-                        val[1], [val[1]] if self.include_own_group_name else [])
+            groups = self.group_with_difflib(field_name)
 
             with open(f'{self.output_folder}/{field_name}.json', 'w') as f:
                 json.dump(groups, f, indent='\t', sort_keys=True)
 
+            sheet = workbook.create_sheet(field_name)
             for group_name, field_names in sorted(groups.items()):
                 group_cell = WriteOnlyCell(value=group_name, ws=sheet)
                 field_cells = [WriteOnlyCell(value=name, ws=sheet)
