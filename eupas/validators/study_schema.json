@@ -30,26 +30,60 @@
         "follow_up"
     ],
     "dependentRequired": {
-        "centre_name": ["centre_location"],
-        "centre_location": ["centre_name"],
-        "centre_organisation": ["centre_name_of_investigator"],
-        "funding_companies_names": ["funding_companies_percentage"],
-        "funding_companies_percentage": ["funding_companies_names"],
-        "funding_charities_names": ["funding_charities_percentage"],
-        "funding_charities_percentage": ["funding_charities_names"],
-        "funding_government_body_names": ["funding_government_body_percentage"],
-        "funding_government_body_percentage": ["funding_government_body_names"],
-        "funding_research_councils_names": ["funding_research_councils_percentage"],
-        "funding_research_councils_percentage": ["funding_research_councils_names"],
-        "funding_eu_scheme_names": ["funding_eu_scheme_percentage"],
-        "funding_eu_scheme_percentage": ["funding_eu_scheme_names"],
-        "funding_other_names": ["funding_other_percentage"],
-        "funding_other_percentage": ["funding_other_names"]
+        "centre_name": [
+            "centre_location"
+        ],
+        "centre_location": [
+            "centre_name"
+        ],
+        "centre_organisation": [
+            "centre_name_of_investigator"
+        ],
+        "funding_companies_names": [
+            "funding_companies_percentage"
+        ],
+        "funding_companies_percentage": [
+            "funding_companies_names"
+        ],
+        "funding_charities_names": [
+            "funding_charities_percentage"
+        ],
+        "funding_charities_percentage": [
+            "funding_charities_names"
+        ],
+        "funding_government_body_names": [
+            "funding_government_body_percentage"
+        ],
+        "funding_government_body_percentage": [
+            "funding_government_body_names"
+        ],
+        "funding_research_councils_names": [
+            "funding_research_councils_percentage"
+        ],
+        "funding_research_councils_percentage": [
+            "funding_research_councils_names"
+        ],
+        "funding_eu_scheme_names": [
+            "funding_eu_scheme_percentage"
+        ],
+        "funding_eu_scheme_percentage": [
+            "funding_eu_scheme_names"
+        ],
+        "funding_other_names": [
+            "funding_other_percentage"
+        ],
+        "funding_other_percentage": [
+            "funding_other_names"
+        ]
     },
     "properties": {
         "state": {
             "type": "string",
-            "enum": ["Finalised", "Ongoing", "Planned"]
+            "enum": [
+                "Finalised",
+                "Ongoing",
+                "Planned"
+            ]
         },
         "eu_pas_register_number": {
             "type": "string",
@@ -84,16 +118,33 @@
         "study_type": {
             "type": "string",
             "oneOf": [
-                { "enum": ["Active surveillance", "Clinical trial", "Observational study"]},
-                { "pattern": "^Other: "},
-                { "pattern": "^Clinical trial; EUDRACT number: \\d{4}-\\d{6}-\\d{2}$"}
+                {
+                    "enum": [
+                        "Active surveillance",
+                        "Clinical trial",
+                        "Observational study"
+                    ]
+                },
+                {
+                    "pattern": "^Other: "
+                },
+                {
+                    "pattern": "^Clinical trial; EUDRACT number: \\d{4}-\\d{6}-\\d{2}$"
+                }
             ]
         },
         "requested_by_regulator": {
             "type": "string",
             "oneOf": [
-                { "enum": ["Don't know","No"]},
-                { "pattern": "^Yes: "}
+                {
+                    "enum": [
+                        "Don't know",
+                        "No"
+                    ]
+                },
+                {
+                    "pattern": "^Yes: "
+                }
             ]
         },
         "risk_managment_plan": {
@@ -128,11 +179,17 @@
         },
         "collaboration_with_research_network": {
             "type": "string",
-            "enum": ["Yes", "No"]
+            "enum": [
+                "Yes",
+                "No"
+            ]
         },
         "country_type": {
             "type": "string",
-            "enum": ["National study", "International study"]
+            "enum": [
+                "National study",
+                "International study"
+            ]
         },
         "countries": {
             "type": "array",
@@ -210,7 +267,7 @@
         "funding_companies_percentage": {
             "type": "number",
             "minimum": 0,
-            "maximum": 100 
+            "maximum": 100
         },
         "funding_charities_names": {
             "type": "string",
@@ -219,7 +276,7 @@
         "funding_charities_percentage": {
             "type": "number",
             "minimum": 0,
-            "maximum": 100 
+            "maximum": 100
         },
         "funding_government_body_names": {
             "type": "string",
@@ -228,7 +285,7 @@
         "funding_government_body_percentage": {
             "type": "number",
             "minimum": 0,
-            "maximum": 100 
+            "maximum": 100
         },
         "funding_research_councils_names": {
             "type": "string",
@@ -237,7 +294,7 @@
         "funding_research_councils_percentage": {
             "type": "number",
             "minimum": 0,
-            "maximum": 100 
+            "maximum": 100
         },
         "funding_eu_scheme_names": {
             "type": "string",
@@ -246,7 +303,7 @@
         "funding_eu_scheme_percentage": {
             "type": "number",
             "minimum": 0,
-            "maximum": 100 
+            "maximum": 100
         },
         "funding_other_names": {
             "type": "array",
@@ -261,7 +318,7 @@
             "items": {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 100 
+                "maximum": 100
             },
             "minItems": 1,
             "uniqueItems": false
@@ -287,9 +344,11 @@
         "medical_conditions": {
             "type": "array",
             "oneOf": [
-                { 
+                {
                     "prefixItems": [
-                        { "const": "Yes" }
+                        {
+                            "const": "Yes"
+                        }
                     ],
                     "items": {
                         "type": "string",
@@ -298,7 +357,9 @@
                 },
                 {
                     "prefixItems": [
-                        { "const": "No" }
+                        {
+                            "const": "No"
+                        }
                     ],
                     "items": false
                 }
@@ -333,7 +394,10 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["Male", "Female"]
+                "enum": [
+                    "Male",
+                    "Female"
+                ]
             },
             "minItems": 1,
             "uniqueItems": true
@@ -359,7 +423,10 @@
         },
         "uses_established_data_source": {
             "type": "string",
-            "enum": ["Yes", "No"]
+            "enum": [
+                "Yes",
+                "No"
+            ]
         },
         "data_sources_registered_with_encepp": {
             "type": "array",
@@ -404,9 +471,11 @@
         "primary_outcomes": {
             "type": "array",
             "oneOf": [
-                { 
+                {
                     "prefixItems": [
-                        { "const": "Yes" }
+                        {
+                            "const": "Yes"
+                        }
                     ],
                     "items": {
                         "type": "string",
@@ -415,7 +484,9 @@
                 },
                 {
                     "prefixItems": [
-                        { "const": "No" }
+                        {
+                            "const": "No"
+                        }
                     ],
                     "items": false
                 }
@@ -427,9 +498,11 @@
         "secondary_outcomes": {
             "type": "array",
             "oneOf": [
-                { 
+                {
                     "prefixItems": [
-                        { "const": "Yes" }
+                        {
+                            "const": "Yes"
+                        }
                     ],
                     "items": {
                         "type": "string",
@@ -438,7 +511,9 @@
                 },
                 {
                     "prefixItems": [
-                        { "const": "No" }
+                        {
+                            "const": "No"
+                        }
                     ],
                     "items": false
                 }
@@ -458,11 +533,21 @@
         },
         "follow_up": {
             "type": "string",
-            "enum": ["Yes", "Not applicable/no follow-up"]
+            "enum": [
+                "Yes",
+                "Not applicable/no follow-up"
+            ]
         },
         "protocol_document_url": {
             "type": "string",
-            "pattern": "^/encepp/openAttachment/fullProtocol/\\d{4,6}(;jsessionid=\\S+!-?\\d{8,10})?$"
+            "oneOf": [
+                {
+                    "pattern": "^/encepp/openAttachment/fullProtocol/\\d{4,6}(;jsessionid=\\S+!-?\\d{8,10})?$"
+                },
+                {
+                    "const": "Not public until study ends"
+                }
+            ]
         },
         "latest_protocol_document_url": {
             "type": "string",
@@ -470,7 +555,14 @@
         },
         "result_document_url": {
             "type": "string",
-            "pattern": "^/encepp/openAttachment/studyResult/\\d{4,6}(;jsessionid=\\S+!-?\\d{8,10})?$"
+            "oneOf": [
+                {
+                    "pattern": "^/encepp/openAttachment/studyResult/\\d{4,6}(;jsessionid=\\S+!-?\\d{8,10})?$"
+                },
+                {
+                    "const": "Not public until study ends"
+                }
+            ]
         },
         "latest_result_document_url": {
             "type": "string",

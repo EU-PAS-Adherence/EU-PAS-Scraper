@@ -26,6 +26,7 @@ class ItemHistoryComparer:
     changed_url_key = '$CHANGED_URL'
     deleted_fields_key = '$DELETED_FIELDS'
     duplicate_fields_key = '$DUPLICATE_SEARCH_ENTRY'
+    only_excepted_fields_key = '$ONLY_EXCEPTED_FIELDS_CHANGED'
 
     # There is currently only one study with duplicate entries with two different titles
     # The other fields could also be affected, but not at this moment
@@ -35,6 +36,13 @@ class ItemHistoryComparer:
         # 'eu_pas_register_number',
         'title',
         # 'update_date',
+    }
+
+    # Updates without date changes are excepted in these fields. These fields are linked to
+    # other sites which can be updated independently.
+    excepted_fields = {
+        'centre_name_of_investigator', 
+        'data_sources_registered_with_encepp'
     }
 
     # NOTE: If the meta field pipeline is used: all meta field names get ignored
@@ -122,14 +130,15 @@ class ItemHistoryComparer:
             else:
                 self.crawler.stats.inc_value(
                     'item_history_comparer/updated_item_without_changed_date_count')
-                if not difference and deleted:
+                if only_excepted_fields := {d[0] for d in difference}.union(set(difference)).issubset(self.excepted_fields):
                     self.crawler.stats.inc_value(
-                        'item_history_comparer/updated_item_without_changed_date_count/only_deletions')
+                        'item_history_comparer/updated_item_without_changed_date_count/only_excepted_fields')
                 if duplicate and {d[0] for d in difference}.issubset(self.duplicate_allowed_changed_fields):
                     self.crawler.stats.inc_value(
                         'item_history_comparer/updated_item_without_changed_date_count/duplicate_related')
                 updates_dict.setdefault(self.changed_date_key, False)
-
+            
+            updates_dict.setdefault(self.only_excepted_fields_key, only_excepted_fields)
             updates_dict.setdefault(self.duplicate_fields_key, duplicate)
             updates_dict.setdefault(
                 self.changed_eupas_key, new_study["eu_pas_register_number"])

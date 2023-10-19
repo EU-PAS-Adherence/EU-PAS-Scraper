@@ -191,6 +191,7 @@ AUTOTHROTTLE_MAX_DELAY = 10.0
 
 # CloseSpider Extension
 CLOSESPIDER_TIMEOUT = 2 * 60 * 60
+CLOSESPIDER_TIMEOUT_NO_ITEM = 30 * 60
 CLOSESPIDER_ERRORCOUNT = 5
 
 # Enable and configure Spidermon Extension (https://spidermon.readthedocs.io)
@@ -213,7 +214,6 @@ SPIDERMON_MAX_ITEM_VALIDATION_ERRORS = 0
 #   SPIDERMON_FIELD_COVERAGE_RULES.setdefault(f'Study/{field}', 1.0)
 # TODO: Find a better way to fix the problem
 SPIDERMON_MAX_ITEM_UPDATES_WITHOUT_DATE_CHANGES_OR_DATE_DELETES = 0
-SPIDERMON_ACCEPT_ITEM_UPDATES_WITH_DATE_CHANGES_WHEN_ONLY_ATTRIBUTES_DELETED = True
 
 # Settings for http_monitors
 SPIDERMON_UNWANTED_HTTP_CODES = {
@@ -355,8 +355,7 @@ FEED_EXPORTERS = {
     'sqlite3': 'eupas.exporters.SQLiteItemExporter'
 }
 
-# This setting tells the exporters if they should export empty item fields
-# This will be ignored for csv or xlsx
+# This setting tells the exporters if they should export empty feeds without any items
 FEED_STORE_EMPTY = True
 # Splits the files in to batches with up to FEED_EXPORT_BATCH_ITEM_COUNT items in each file
 # FEED_EXPORT_BATCH_ITEM_COUNT = 100

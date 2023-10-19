@@ -44,6 +44,7 @@ dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.dynamic.optional-dependencies]
 test = {file = ["requirements.testing.txt"]}
+group = {file = ["requirements.grouping.txt"]}
 
 # [project.scripts]
 # my-script = "my_package.module:function"

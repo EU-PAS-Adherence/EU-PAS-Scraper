@@ -76,15 +76,6 @@ class EU_PAS_Spider(spiders.Spider):
         self.rmp_query_val = filter_rmp_category.value if filter_rmp_category else ''
         self.eupas_id_query_val = filter_eupas_id or ''
 
-        # TODO: Remove warnings filter after fix:
-        # https://github.com/scrapy/scrapy/issues/5903
-        import warnings
-        warnings.filterwarnings(
-            'ignore',
-            message='Selector got both text and root, root is being ignored.',
-            category=UserWarning
-        )
-
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
         spider = super().from_crawler(crawler, *args, **kwargs)
@@ -465,9 +456,13 @@ class EU_PAS_Spider(spiders.Spider):
             # num_cells should be 2, when only one url is expected, but sometimes there is an invisible third cell with an empty url
             if protocol_url := block[0].xpath('./span[2]/a/@href').get():
                 study['protocol_document_url'] = protocol_url
+            elif block[0].xpath('./span[1]').re_first("Available when the study ends"):
+                study['protocol_document_url'] = "Not public until study ends"
         elif num_cells == 4:
             if protocol_url := block[0].xpath('./span[3]/a/@href').get():
                 study['protocol_document_url'] = protocol_url
+            elif block[0].xpath('./span[3]').re_first("Available when the study ends"):
+                study['protocol_document_url'] = "Not public until study ends"
             study['latest_protocol_document_url'] = block[0].xpath(
                 './span[4]/a/@href').get()
         else:

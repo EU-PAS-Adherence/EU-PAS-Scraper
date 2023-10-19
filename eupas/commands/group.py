@@ -1,28 +1,33 @@
-from difflib import get_close_matches
+from difflib import get_close_matches, SequenceMatcher
+from itertools import groupby
 import json
 import logging
 from pathlib import Path
 import re
+import unicodedata
 
+import cleanco
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
+import numpy as np
 from scrapy.commands import ScrapyCommand
 from scrapy.exceptions import UsageError
+from sklearn.cluster import AffinityPropagation
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 from eupas.items import Study
 
 
 class Command(ScrapyCommand):
 
-    include_own_group_name = True
-
     requires_project = True
 
-    junk_chars = '.,;\n\t'
-    junk_words = frozenset([
-        'inc', 'gmbh', 'ltd', 'limited', 'co', 'kg', 'spa', 'llc',
-        'pharmaceuticals', 'pharma', 'therapeutics',
-    ])
+    # and, &, Dept, Department, co, company, R&D
+    # delete all chars in () or []
+    junk_words = frozenset({
+        'pharma', 'pharmaceuticals', 'therapeutics', 'international', 'group',
+        'cro', 'kk', 'pvt', 'nhs foundation trust'
+    })
 
     def add_options(self, parser):
         ScrapyCommand.add_options(self, parser)
@@ -45,7 +50,7 @@ class Command(ScrapyCommand):
             "-c",
             "--cutoff",
             metavar="CUTOFF",
-            default=0.5,
+            default=0.6,
             help="cutoff value for grouping"
         )
 
@@ -78,22 +83,44 @@ class Command(ScrapyCommand):
     def short_desc(self):
         return "Group extracted row value"
 
-    def serialize(self, s):
+    def serialize(self, s, casefold=True):
         def filter_multiple_spaces(s):
             return re.sub(r'\s+', ' ', s)
 
         def filter_junk_chars(s):
-            return re.sub(rf'[{self.junk_chars}]', '', s)
+            return re.sub(r'[^\w ]', '', s)
 
         def sub_junk_words(m):
-            return '' if m.group() in self.junk_words else m.group()
+            return '' if m.group() in self.junk_words.union(ENGLISH_STOP_WORDS) else m.group()
 
         def filter_junk_words(s):
-            return re.sub(r'\w+', sub_junk_words, s)
+            return cleanco.basename(re.sub(r'\w+', sub_junk_words, s), suffix=True, prefix=True, middle=True)
 
-        return filter_multiple_spaces(filter_junk_words(filter_junk_chars(str(s).lower()))).strip()
+        return filter_multiple_spaces(
+            filter_junk_words(
+                filter_junk_chars(
+                    unicodedata.normalize('NFKD', str(s).casefold() if casefold else str(s)).encode(
+                        'ASCII', 'ignore').decode('UTF-8', 'ignore')
+                ))).strip()
 
-    def group_with_difflib(self, field_name):
+    def affinity_cluster_with_difflib(self, field_name):
+        values = sorted(
+            list({study[field_name] for study in self.studies if field_name in study}))
+        clean_values = [self.serialize(s) for s in values]
+        matcher = SequenceMatcher()
+
+        similarity = np.identity(len(values))
+        for i in range(1, len(values)):
+            for j in range(i):
+                matcher.set_seqs(clean_values[i], clean_values[j])
+                similarity[i,j] = similarity[j,i] = matcher.ratio()
+
+        clusters = AffinityPropagation(
+            affinity='precomputed', max_iter=100, convergence_iter=8).fit_predict(similarity)
+        return {int(k): [h[1] for h in list(g)] for k, g in groupby(sorted(zip(clusters, clean_values),
+                key=lambda x: x[0]), key=lambda x: x[0])}
+
+    def simple_cluster_with_difflib(self, field_name):
         '''
         Groups field_name using difflib get_close_matches.
         This grouping algorithm isn't optimal.
@@ -123,14 +150,14 @@ class Command(ScrapyCommand):
             matches = get_close_matches(
                 val, values, n=len(values), cutoff=self.cutoff)
             values.difference_update(matches)
-            if self.include_own_group_name:
-                matches.append(val)
-            groups.setdefault(val[1], sorted([m[1] for m in matches]))
+            matches.append(val)
+            groups.setdefault(self.serialize(
+                val[1], casefold=False), sorted([m[1] for m in matches]))
 
         if len(values) == 1:
             val = values.pop()
             groups.setdefault(
-                val[1], [val[1]] if self.include_own_group_name else [])
+                self.serialize(val[1], casefold=False), [val[1]])
 
         return groups
 
@@ -155,7 +182,16 @@ class Command(ScrapyCommand):
         for field_name in args:
             logger.info(f'Grouping field: {field_name}')
 
-            groups = self.group_with_difflib(field_name)
+            # DEBUG: export unique values
+            # values = sorted(list({str(study[field_name])
+            #                       for study in self.studies
+            #                       if field_name in study
+            #                        }))
+            # with open(f'{self.output_folder}/values_{field_name}.json', 'w') as f:
+            #     json.dump(values, f, indent='\t')
+
+            groups = self.affinity_cluster_with_difflib(field_name)
+            # groups = self.simple_cluster_with_difflib(field_name)
 
             with open(f'{self.output_folder}/{field_name}.json', 'w') as f:
                 json.dump(groups, f, indent='\t', sort_keys=True)
