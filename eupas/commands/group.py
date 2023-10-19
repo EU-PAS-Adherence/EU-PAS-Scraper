@@ -6,14 +6,10 @@ from pathlib import Path
 import re
 import unicodedata
 
-import cleanco
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
-import numpy as np
 from scrapy.commands import ScrapyCommand
 from scrapy.exceptions import UsageError
-from sklearn.cluster import AffinityPropagation
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 from eupas.items import Study
 
@@ -91,9 +87,11 @@ class Command(ScrapyCommand):
             return re.sub(r'[^\w ]', '', s)
 
         def sub_junk_words(m):
+            from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
             return '' if m.group() in self.junk_words.union(ENGLISH_STOP_WORDS) else m.group()
 
         def filter_junk_words(s):
+            import cleanco
             return cleanco.basename(re.sub(r'\w+', sub_junk_words, s), suffix=True, prefix=True, middle=True)
 
         return filter_multiple_spaces(
@@ -104,6 +102,9 @@ class Command(ScrapyCommand):
                 ))).strip()
 
     def affinity_cluster_with_difflib(self, field_name):
+        import numpy as np
+        from sklearn.cluster import AffinityPropagation
+
         values = sorted(
             list({study[field_name] for study in self.studies if field_name in study}))
         clean_values = [self.serialize(s) for s in values]
