@@ -41,7 +41,7 @@ class ItemHistoryComparer:
     # Updates without date changes are excepted in these fields. These fields are linked to
     # other sites which can be updated independently.
     excepted_fields = {
-        'centre_name_of_investigator', 
+        'centre_name_of_investigator',
         'data_sources_registered_with_encepp'
     }
 
@@ -117,6 +117,7 @@ class ItemHistoryComparer:
         deleted = list(frozenset(old_study.keys()) -
                        frozenset(new_study.keys()))
         updates_dict = dict(difference)
+        only_excepted_fields = False
 
         if difference or deleted:
             if 'update_date' in updates_dict:
@@ -130,15 +131,17 @@ class ItemHistoryComparer:
             else:
                 self.crawler.stats.inc_value(
                     'item_history_comparer/updated_item_without_changed_date_count')
-                if only_excepted_fields := {d[0] for d in difference}.union(set(difference)).issubset(self.excepted_fields):
+                if {d[0] for d in difference}.union(set(difference)).issubset(self.excepted_fields):
+                    only_excepted_fields = True
                     self.crawler.stats.inc_value(
                         'item_history_comparer/updated_item_without_changed_date_count/only_excepted_fields')
                 if duplicate and {d[0] for d in difference}.issubset(self.duplicate_allowed_changed_fields):
                     self.crawler.stats.inc_value(
                         'item_history_comparer/updated_item_without_changed_date_count/duplicate_related')
                 updates_dict.setdefault(self.changed_date_key, False)
-            
-            updates_dict.setdefault(self.only_excepted_fields_key, only_excepted_fields)
+
+            updates_dict.setdefault(
+                self.only_excepted_fields_key, only_excepted_fields)
             updates_dict.setdefault(self.duplicate_fields_key, duplicate)
             updates_dict.setdefault(
                 self.changed_eupas_key, new_study["eu_pas_register_number"])

@@ -261,10 +261,10 @@ ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH = f'{OUTPUT_DIRECTORY}/updates.json'
 ##################################
 #     ITEM PIPELINE SETTINGS     #
 ##################################
-# TODO: remove?
-METAFIELD_ENABLED = False
-METAFIELD_GROUP_SIMILAR_FIELDS_NAMES = [
-    'centre_name', 'funding_companies_names']
+METAFIELD_ENABLED = True
+# METAFIELD_MATCH_FILE_PATH =
+METAFIELD_MATCH_FIELDS_NAMES = [
+    'centre_name', 'centre_name_of_investigator', 'eu_pas_register_number']
 ##################################
 
 ##################################

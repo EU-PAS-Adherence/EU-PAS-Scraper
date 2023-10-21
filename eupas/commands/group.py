@@ -114,7 +114,7 @@ class Command(ScrapyCommand):
         for i in range(1, len(values)):
             for j in range(i):
                 matcher.set_seqs(clean_values[i], clean_values[j])
-                similarity[i,j] = similarity[j,i] = matcher.ratio()
+                similarity[i, j] = similarity[j, i] = matcher.ratio()
 
         clusters = AffinityPropagation(
             affinity='precomputed', max_iter=100, convergence_iter=8).fit_predict(similarity)

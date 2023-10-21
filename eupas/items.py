@@ -42,6 +42,7 @@ class Study(item.Item):
     registration_date = item.Field(required=True, serializer=serialize_date)
     acronym = item.Field()
     study_type = item.Field(required=True)
+    description = item.Field()
     requested_by_regulator = item.Field(required=True)
     risk_managment_plan = item.Field()
     regulatory_procedure_number = item.Field()

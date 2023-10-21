@@ -196,7 +196,7 @@ class EU_PAS_Spider(spiders.Spider):
 
         yield study
 
-    def save_pdf(self, response: http.Response, study: Study):
+    def save_pdf(self, response: http.Response, study: Study) -> None:
         file_path = Path(f"{self.settings.get('OUTPUT_DIRECTORY')}/PDFs/")
         file_path.mkdir(parents=True, exist_ok=True)
         pdf_file = file_path / f"{study['eu_pas_register_number']}.pdf"
@@ -246,6 +246,8 @@ class EU_PAS_Spider(spiders.Spider):
         if acronym := details.xpath('./div[3]/span[2]//text()').get():
             study['acronym'] = acronym
         study['study_type'] = details.xpath('./div[4]/span[2]//text()').get()
+        if description := details.xpath('./div[5]/span[2]//text()').get():
+            study['description'] = description
         study['requested_by_regulator'] = details.xpath(
             './div[6]/span[2]//text()').get()
         if rpm := details.xpath('./div[7]/span[2]//text()').get().strip():
