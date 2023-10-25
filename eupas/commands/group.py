@@ -170,7 +170,7 @@ class Command(ScrapyCommand):
 
         if not set(args).issubset(set(Study.fields)):
             raise UsageError(
-                "At least one -g value isn't a valid field name", print_help=False)
+                "At least one group value isn't a valid field name", print_help=False)
 
         with self.input_path.open('r') as f:
             self.studies = json.load(f)
@@ -191,8 +191,8 @@ class Command(ScrapyCommand):
             # with open(f'{self.output_folder}/values_{field_name}.json', 'w') as f:
             #     json.dump(values, f, indent='\t')
 
-            groups = self.affinity_cluster_with_difflib(field_name)
-            # groups = self.simple_cluster_with_difflib(field_name)
+            # groups = self.affinity_cluster_with_difflib(field_name)
+            groups = self.simple_cluster_with_difflib(field_name)
 
             with open(f'{self.output_folder}/{field_name}.json', 'w') as f:
                 json.dump(groups, f, indent='\t', sort_keys=True)

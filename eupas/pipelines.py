@@ -26,7 +26,7 @@ class DuplicatesPipeline:
         return item
 
 
-# TODO: Add Matching
+# TODO: Remove this pipeline and use patching instead
 class MetaFieldPipeline:
     # NOTE: The meta field chars shouldn't be the first letter of any actual field [a-z, A-Z]
     # Furthermore _ can be used but it will be disappear in excel because snake_case
@@ -42,7 +42,7 @@ class MetaFieldPipeline:
         r'\bhalt',
         r'\bnot\s+complet',
         r'\bsuspend',
-        r'withdr(a|e)w'
+        r'\bwithdr(a|e)w'
     ]
 
     def is_study_cancelled(self, description):
@@ -53,14 +53,14 @@ class MetaFieldPipeline:
 
     def __init__(self, enabled, fields_to_match):
         self.enabled = enabled
-        self.fields_to_group = fields_to_match
+        self.fields_to_match = fields_to_match
 
     @classmethod
     def from_crawler(cls, crawler):
         enabled = crawler.settings.getbool('METAFIELD_ENABLED')
-        fields_to_group = crawler.settings.getdictorlist(
+        fields_to_match = crawler.settings.getdictorlist(
             'METAFIELD_MATCH_FIELDS_NAMES', default=[])
-        return cls(enabled, fields_to_group)
+        return cls(enabled, fields_to_match)
 
     def open_spider(self, _: spiders.Spider):
         if not self.enabled:
