@@ -6,8 +6,6 @@ from scrapy.utils.serialize import ScrapyJSONEncoder
 import json
 from pathlib import Path
 
-from eupas.pipelines import MetaFieldPipeline
-
 
 class SingleJsonItemStringExporter(BaseItemExporter):
     def __init__(self, **kwargs):
@@ -46,14 +44,13 @@ class ItemHistoryComparer:
     }
 
     # NOTE: If the meta field pipeline is used: all meta field names get ignored
-    def __init__(self, file_path, output_path, crawler, has_meta_fields=False):
+    def __init__(self, file_path, output_path, crawler):
         self.exporter = SingleJsonItemStringExporter()
         with open(file_path, 'r') as f:
             self.studies = json.load(f)
         self.updates = []
         self.output_path = output_path
         self.crawler = crawler
-        self.has_meta_fields = has_meta_fields
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -65,10 +62,9 @@ class ItemHistoryComparer:
         file_path = crawler.settings.get('ITEMHISTORYCOMPARER_JSON_INPUT_PATH')
         output_path = crawler.settings.get(
             'ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH')
-        meta_fields = crawler.settings.getbool('METAFIELD_ENABLED')
 
         # instantiate the extension object
-        ext = cls(file_path, output_path, crawler, has_meta_fields=meta_fields)
+        ext = cls(file_path, output_path, crawler)
 
         # connect the extension object to signals
         crawler.signals.connect(ext.spider_idle, signal=signals.spider_idle)
@@ -89,9 +85,6 @@ class ItemHistoryComparer:
 
     def item_scraped(self, item, spider):
         new_study = json.loads(self.exporter.export_item(item))
-        if self.has_meta_fields:
-            new_study = dict(filter(
-                lambda item: item[0][0] not in MetaFieldPipeline.meta_field_chars, new_study.items()))
 
         old_studies = list(filter(
             lambda x: x['eu_pas_register_number'] == new_study['eu_pas_register_number'], self.studies))
@@ -108,10 +101,6 @@ class ItemHistoryComparer:
             f'dupefilter/filtered/search_entries/eupas_{new_study["eu_pas_register_number"]}', 0) > 0
 
         old_study = old_studies[0]
-        if self.has_meta_fields:
-            old_study = dict(filter(
-                lambda item: item[0][0] not in MetaFieldPipeline.meta_field_chars, old_study.items()))
-
         difference = frozenset(self.tuplify(new_study)) - \
             frozenset(self.tuplify(old_study))
         deleted = list(frozenset(old_study.keys()) -

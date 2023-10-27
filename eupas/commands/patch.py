@@ -1,4 +1,6 @@
+import logging
 from pathlib import Path
+import re
 
 from scrapy.commands import ScrapyCommand
 from scrapy.exceptions import UsageError
@@ -9,7 +11,22 @@ from eupas.items import Study
 class Command(ScrapyCommand):
 
     requires_project = True
+
+    commands = frozenset(['match', 'cancel'])
+
     matched_meta_field_name_prefix = '$MATCHED_'
+    matching_fields = ['centre_name', 'centre_name_of_investigator']
+
+    study_cancelled_meta_field_name = '$CANCELLED'
+    study_cancelled_patterns = [
+        r'\bcancel',
+        r'\bdiscontinu',
+        r'\bterminat',
+        r'\bhalt',
+        r'\bnot\s+complet',
+        r'\bsuspend',
+        r'\bwithdr(a|e)w'
+    ]
 
     def add_options(self, parser):
         ScrapyCommand.add_options(self, parser)
@@ -22,22 +39,25 @@ class Command(ScrapyCommand):
             help="path to the input file"
         )
         patch.add_argument(
-            "-m",
-            "--matchinput",
-            metavar="FILE",
-            default=None,
-            help="path to the matching file"
-        )
-        patch.add_argument(
             "-o",
             "--output",
             metavar="FOLDER",
             default=None,
             help="path to the output folder"
         )
+        patch.add_argument(
+            "-m",
+            "--matchinput",
+            metavar="FILE",
+            default=None,
+            help="path to the matching file"
+        )
 
     def process_options(self, args, opts):
         ScrapyCommand.process_options(self, args, opts)
+        self.match_enabled = 'match' in args
+        self.cancel_enabled = 'cancel' in args
+
         self.input_path = Path(opts.input or "")
         if not self.input_path.is_file():
             raise UsageError(
@@ -46,19 +66,19 @@ class Command(ScrapyCommand):
             raise UsageError(
                 "Invalid -i value, file format not supported", print_help=False)
 
-        self.match_path = Path(opts.matchinput or "")
-        if not self.match_path.is_file():
-            raise UsageError(
-                "Invalid -m value, use a valid path to a file", print_help=False)
-        if self.match_path.suffix != '.xlsx':
-            raise UsageError(
-                "Invalid -m value, xlsx file expected", print_help=False)
-
         self.output_folder = Path(opts.output or "")
         if not self.output_folder.is_dir():
             raise UsageError(
                 "Invalid -i value, use a valid path to a folder", print_help=False)
         self.output_folder.mkdir(parents=True, exist_ok=True)
+
+        self.match_path = Path(opts.matchinput or "")
+        if not self.match_path.is_file() and self.match_enabled:
+            raise UsageError(
+                "Invalid -m value, use a valid path to a file", print_help=False)
+        if self.match_path.suffix != '.xlsx' and self.match_enabled:
+            raise UsageError(
+                "Invalid -m value, xlsx file expected", print_help=False)
 
     def syntax(self):
         return "matching_field_names [options]"
@@ -66,19 +86,27 @@ class Command(ScrapyCommand):
     def short_desc(self):
         return "Patch the input file by matching the provided field_names"
 
+    def is_study_cancelled(self, description):
+        return any(
+            re.search(pattern, description.lower())
+            for pattern in self.study_cancelled_patterns
+        )
+
     def run(self, args, opts):
         if len(args) == 0:
             raise UsageError(
                 "running 'scrapy patch' without additional arguments is not supported"
             )
-
-        if not set(args).issubset(set(Study.fields)):
+        if not set(args).issubset(self.commands):
             raise UsageError(
-                "At least one patch value isn't a valid field name", print_help=False)
+                f"running 'scrapy patch' without one of these commands is not supported: {', '.join(self.commands)}"
+            )
 
+        self.logger = logging.getLogger()
+        self.logger.info('Start patching')
         import pandas as pd
-        matching_data = pd.read_excel(
-            self.match_path, sheet_name=args, header=None)
+
+        self.logger.info('Reading input data...')
         input_data = None
         if self.input_path.suffix == '.csv':
             input_data = pd.read_csv(self.input_path)
@@ -94,24 +122,42 @@ class Command(ScrapyCommand):
         elif self.input_path.suffix == '.xml':
             input_data = pd.read_xml(self.input_path)
 
-        print(input_data)
-
+        # print(input_data)
         output_data = input_data
-        for field_name in args:
-            output_data = pd.merge(
-                # TODO: remove after deleting not applicable or change it so that only '' and None are
-                # Has to be done because of merging problems with the value not applicable
-                output_data.fillna(value={field_name: ''}),
-                matching_data[field_name].iloc[:, 1:].rename(columns={
-                    1: f'{self.matched_meta_field_name_prefix}{field_name}',
-                    2: field_name
-                }),
-                how='left',
-                on=field_name,
-                # validate='m:1' Problem with not applicable!
-            )
-        output_data[f'{self.matched_meta_field_name_prefix}_COMBINED'] = output_data[[f'{self.matched_meta_field_name_prefix}{field_name}' for field_name in args]].apply(lambda x: ''.join([str(y) for y in x.values if str(y) != "nan"]), axis='columns')
+        if self.match_enabled:
+            if not set(self.matching_fields).issubset(set(Study.fields)):
+                raise UsageError(
+                    "At least one patch value isn't a valid field name", print_help=False)
 
+            self.logger.info('Reading matching data...')
+            matching_data = pd.read_excel(
+                self.match_path, sheet_name=self.matching_fields, header=None)
+
+            self.logger.info('Start matching')
+            for field_name in self.matching_fields:
+                output_data = pd.merge(
+                    # TODO: remove after deleting not applicable or change it so that only '' and None are
+                    # Has to be done because of merging problems with the value not applicable
+                    output_data.fillna(value={field_name: ''}),
+                    matching_data[field_name].iloc[:, 1:].rename(columns={
+                        1: f'{self.matched_meta_field_name_prefix}{field_name}',
+                        2: field_name
+                    }),
+                    how='left',
+                    on=field_name,
+                    # validate='m:1' Problem with not applicable!
+                )
+            output_data[f'{self.matched_meta_field_name_prefix}_COMBINED'] = output_data[[f'{self.matched_meta_field_name_prefix}{field_name}' for field_name in self.matching_fields]].apply(
+                lambda x: ''.join([str(y) for y in x.values if str(y) != "nan"]), axis='columns')
+            self.logger.info('Matching finished')
+
+        if self.cancel_enabled:
+            self.logger.info('Start cancel detection')
+            output_data[self.study_cancelled_meta_field_name] = output_data['description'].apply(
+                lambda d: 'No description' if str(d) == "nan" else 'Yes' if self.is_study_cancelled(d) else 'No')
+            self.logger.info('Cancel detection finished')
+
+        self.logger.info('Writing output data...')
         output_path = self.output_folder / self.input_path.name
         if output_path.suffix == '.csv':
             output_data.to_csv(output_path)
@@ -124,6 +170,7 @@ class Command(ScrapyCommand):
                     [word.capitalize() for word in x.split('_')]),
                 inplace=True
             )
-            output_data.to_excel(output_path)
+            output_data.to_excel(output_path, sheet_name='PAS')
         elif output_path.suffix == '.xml':
             output_data.to_xml(output_path)
+        self.logger.info('Patching finished')

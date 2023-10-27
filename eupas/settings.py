@@ -120,7 +120,6 @@ EXTENSIONS = {
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
     'eupas.pipelines.DuplicatesPipeline': 0,
-    'eupas.pipelines.MetaFieldPipeline': 100,  # TODO: remove?
     'spidermon.contrib.scrapy.pipelines.ItemValidationPipeline': 800,
 }
 ##################################
@@ -259,15 +258,6 @@ ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH = f'{OUTPUT_DIRECTORY}/updates.json'
 ##################################
 
 ##################################
-#     ITEM PIPELINE SETTINGS     #
-##################################
-METAFIELD_ENABLED = True
-# METAFIELD_MATCH_FILE_PATH =
-METAFIELD_MATCH_FIELDS_NAMES = [
-    'centre_name', 'centre_name_of_investigator', 'eu_pas_register_number']
-##################################
-
-##################################
 #      Other Scrapy Overrides    #
 ##################################
 
@@ -311,7 +301,7 @@ FEEDS = {
             'include_counter_column': True,
             'join_multivalued': '; ',
             'default_value': '',
-            'sheet_name': 'PAS Studies',
+            'sheet_name': 'PAS',
             'date_format': '%Y-%m-%d',
             'datetime_format': '%Y-%m-%d %H:%M:%S',
         },

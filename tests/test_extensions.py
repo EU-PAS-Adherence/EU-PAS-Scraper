@@ -36,7 +36,6 @@ def project_settings(project_settings, json_file: Path):
     project_settings.set(
         'ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH', str(json_file.parent.absolute()), 100)
     project_settings.set('ITEMHISTORYCOMPARER_ENABLED', True, 100)
-    project_settings.set('METAFIELD_ENABLED', False, 100)
     return project_settings
 
 
