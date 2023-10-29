@@ -14,7 +14,7 @@ class Command(ScrapyCommand):
 
     commands = frozenset(['match', 'cancel'])
 
-    matched_meta_field_name_prefix = '$MATCHED_'
+    matched_meta_field_name_prefix = '$MATCHED'
     matching_fields = ['centre_name', 'centre_name_of_investigator']
 
     study_cancelled_meta_field_name = '$CANCELLED'
@@ -25,8 +25,10 @@ class Command(ScrapyCommand):
         r'\bhalt',
         r'\bnot\s+complet',
         r'\bsuspend',
-        r'\bwithdr(a|e)w'
+        r'\bwithdr(?:a|e)w'
     ]
+
+    updated_state_meta_field_name = '$UPDATED_state'
 
     def add_options(self, parser):
         ScrapyCommand.add_options(self, parser)
@@ -86,12 +88,6 @@ class Command(ScrapyCommand):
     def short_desc(self):
         return "Patch the input file by matching the provided field_names"
 
-    def is_study_cancelled(self, description):
-        return any(
-            re.search(pattern, description.lower())
-            for pattern in self.study_cancelled_patterns
-        )
-
     def run(self, args, opts):
         if len(args) == 0:
             raise UsageError(
@@ -116,7 +112,7 @@ class Command(ScrapyCommand):
             input_data = pd.read_excel(self.input_path).iloc[:, 1:]
             input_data.rename(
                 columns=lambda x: '_'.join(
-                    [word.lower() for word in x.split(' ')]),
+                    [word.lower() for word in x.split(' ')]) if x[0] != '$' else x,
                 inplace=True
             )
         elif self.input_path.suffix == '.xml':
@@ -140,21 +136,29 @@ class Command(ScrapyCommand):
                     # Has to be done because of merging problems with the value not applicable
                     output_data.fillna(value={field_name: ''}),
                     matching_data[field_name].iloc[:, 1:].rename(columns={
-                        1: f'{self.matched_meta_field_name_prefix}{field_name}',
+                        1: f'{self.matched_meta_field_name_prefix}_{field_name}',
                         2: field_name
                     }),
                     how='left',
                     on=field_name,
                     # validate='m:1' Problem with not applicable!
                 )
-            output_data[f'{self.matched_meta_field_name_prefix}_COMBINED'] = output_data[[f'{self.matched_meta_field_name_prefix}{field_name}' for field_name in self.matching_fields]].apply(
+            output_data[f'{self.matched_meta_field_name_prefix}_combined_name'] = output_data[[f'{self.matched_meta_field_name_prefix}_{field_name}' for field_name in self.matching_fields]].apply(
                 lambda x: ''.join([str(y) for y in x.values if str(y) != "nan"]), axis='columns')
             self.logger.info('Matching finished')
 
         if self.cancel_enabled:
             self.logger.info('Start cancel detection')
-            output_data[self.study_cancelled_meta_field_name] = output_data['description'].apply(
-                lambda d: 'No description' if str(d) == "nan" else 'Yes' if self.is_study_cancelled(d) else 'No')
+            output_data[self.study_cancelled_meta_field_name] = output_data['description'].str.contains(
+                '|'.join(self.study_cancelled_patterns), case=False)
+            output_data[f'{self.study_cancelled_meta_field_name}_extracted'] = output_data['description'].str.extract('|'.join(
+                [fr'({x}\S*\b)' for x in self.study_cancelled_patterns]), flags=re.IGNORECASE).apply(lambda x: '; '.join([str(y) for y in x.values if str(y) != "nan"]), axis='columns')
+
+            output_data[self.updated_state_meta_field_name] = output_data['state']
+            query = output_data[self.study_cancelled_meta_field_name].fillna(
+                False) == True
+            output_data.loc[query,
+                            self.updated_state_meta_field_name] = 'Cancelled'
             self.logger.info('Cancel detection finished')
 
         self.logger.info('Writing output data...')
@@ -167,7 +171,7 @@ class Command(ScrapyCommand):
         elif output_path.suffix == '.xlsx':
             output_data.rename(
                 columns=lambda x: ' '.join(
-                    [word.capitalize() for word in x.split('_')]),
+                    [word.capitalize() for word in x.split('_')]) if x[0] != '$' else x,
                 inplace=True
             )
             output_data.to_excel(output_path, sheet_name='PAS')
