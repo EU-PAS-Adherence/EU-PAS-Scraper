@@ -19,13 +19,45 @@ class Command(ScrapyCommand):
 
     study_cancelled_meta_field_name = '$CANCELLED'
     study_cancelled_patterns = [
+        # Best predictor of cancellation
         r'\bcancel',
+
+        # Many false positives; could be reduced by checking the occurence of the words:
+        # study, studies, trial, PAS, PASS, PAES, MAH, market authorisation etc. in the same sentence
         r'\bdiscontinu',
-        r'\bterminat',
+
+        # False positives in pregnancy related studies can be reduced by using the new regex
+        # instead pf the old: r'\bterminat'
+        r'\b(?<!pregnancy )(?<!elective )(?<!medical )(?<!induced )terminat'
+
+        # No matches found for halted etc.
         r'\bhalt',
-        r'\bnot\s+complet',
+
+        # Only three false positive matches => not completly
+        # r'\bnot\s+complet',
+
+        # One false positive, one unclear and one true positive
         r'\bsuspend',
-        r'\bwithdr(?:a|e)w'
+
+        # Many false positives
+        # Also matches withdrawal of meds and withdrawal reactions, withdrawal of consent, etc.
+        # r'\bwithdr(?:a|e)w',
+        # Cant exclude withdrawal because i.e. withdrawal of the MAH, withdrawal of the study
+        r'\bwithdr(?:a|e)w(?!\S*\s+(?:reaction|symptom|rate|(?:of|from)\s+(?:\b\S+\b\s+)?(?:consent|treatment|drug|medication)))',
+
+        # No matches found for revoked etc.
+        r'\brevok',
+
+        # The term abort has practically no relevance for study cancellation and is also used often in
+        # pregnancy related studies. It can be improved in a similiar way to the termination term
+        # r'\babort'
+        # r'\b(?<!spontaneous )(?<!medical )(?<!induced )(?<!elective termination/)abort'
+    
+        # Only matches treatment interruption and the term "interrupted time series"
+        # r'\binterrupt'
+
+        # No matches found for abandoned etc.
+        r'\abandon'
     ]
 
     updated_state_meta_field_name = '$UPDATED_state'
@@ -151,8 +183,10 @@ class Command(ScrapyCommand):
             self.logger.info('Start cancel detection')
             output_data[self.study_cancelled_meta_field_name] = output_data['description'].str.contains(
                 '|'.join(self.study_cancelled_patterns), case=False)
-            output_data[f'{self.study_cancelled_meta_field_name}_extracted'] = output_data['description'].str.extract('|'.join(
+            output_data[f'{self.study_cancelled_meta_field_name}_extracted_word'] = output_data['description'].str.extract('|'.join(
                 [fr'({x}\S*\b)' for x in self.study_cancelled_patterns]), flags=re.IGNORECASE).apply(lambda x: '; '.join([str(y) for y in x.values if str(y) != "nan"]), axis='columns')
+            output_data[f'{self.study_cancelled_meta_field_name}_extracted_sentence'] = output_data['description'].str.extract('|'.join(
+                [fr'(\b[^.!?]*{x}\S*\b[^.!?]*(?P<end{i}>[.!?]+)?(?(end{i})|$))' for i, x in enumerate(self.study_cancelled_patterns)]), flags=re.IGNORECASE).apply(lambda x: '; '.join([str(y) for y in x.values if not re.match(r'nan|[.!?]+', str(y))]), axis='columns')
 
             output_data[self.updated_state_meta_field_name] = output_data['state']
             query = output_data[self.study_cancelled_meta_field_name].fillna(
