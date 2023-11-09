@@ -10,6 +10,27 @@ class PandasCommand(ScrapyCommand):
     import numpy as np
 
     requires_project = True
+    na_values = [
+        "",
+        "#N/A",
+        "#N/A N/A",
+        "#NA",
+        "-1.#IND",
+        "-1.#QNAN",
+        "-NaN",
+        "-nan",
+        "1.#IND",
+        "1.#QNAN",
+        "<NA>",
+        # "N/A",
+        # "NA",
+        "NULL",
+        "NaN",
+        "None",
+        # "n/a",
+        "nan",
+        "null"
+    ]
 
     def add_options(self, parser):
         ScrapyCommand.add_options(self, parser)
@@ -49,11 +70,13 @@ class PandasCommand(ScrapyCommand):
     def read_input(self):
         input_data = None
         if self.input_path.suffix == '.csv':
-            input_data = self.pd.read_csv(self.input_path)
+            input_data = self.pd.read_csv(
+                self.input_path, keep_default_na=False, na_values=self.na_values, na_filter=True)
         elif self.input_path.suffix == '.json':
             input_data = self.pd.read_json(self.input_path)
         elif self.input_path.suffix == '.xlsx':
-            input_data = self.pd.read_excel(self.input_path).iloc[:, 1:]
+            input_data = self.pd.read_excel(
+                self.input_path, keep_default_na=False, na_values=self.na_values, na_filter=True).iloc[:, 1:]
             input_data.rename(
                 columns=lambda x: '_'.join(
                     [word.lower() for word in x.split(' ')]) if x[0] != '$' else x,
@@ -64,8 +87,9 @@ class PandasCommand(ScrapyCommand):
 
         return input_data
 
-    def write_output(self, data, output_suffix = '_pandas'):
-        output_path = self.output_folder / f'{self.input_path.stem}{output_suffix}{self.input_path.suffix}'
+    def write_output(self, data, output_suffix='_pandas'):
+        output_path = self.output_folder / \
+            f'{self.input_path.stem}{output_suffix}{self.input_path.suffix}'
         if output_path.suffix == '.csv':
             data.to_csv(output_path)
         elif output_path.suffix == '.json':

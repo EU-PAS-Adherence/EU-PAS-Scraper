@@ -258,12 +258,12 @@ class EU_PAS_Spider(spiders.Spider):
         # Second Block: Research centres and Investigator details
         block = self._get_block_from_details(details, index=2)
         if len(block) == 2:
-            study['centre_name'] = block[0].xpath('./span[2]//text()').get()
+            study['centre_name'] = block[0].xpath('./span[2]//text()').get().strip()
             study['centre_location'] = block[1].xpath(
                 './span[2]//text()').get()
         elif len(block) == 4:
             study['centre_name_of_investigator'] = block[0].xpath(
-                './span[2]//text()').get()
+                './span[2]//text()').get().strip()
             if organisation := block[2].xpath('./span[2]//text()').get():
                 study['centre_organisation'] = organisation
         else:

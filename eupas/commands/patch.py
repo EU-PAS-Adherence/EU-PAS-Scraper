@@ -50,7 +50,7 @@ class Command(PandasCommand):
         # pregnancy related studies. It can be improved in a similiar way to the termination term
         # r'\babort'
         # r'\b(?<!spontaneous )(?<!medical )(?<!induced )(?<!elective termination/)abort'
-    
+
         # Only matches treatment interruption and the term "interrupted time series"
         # r'\binterrupt'
 
@@ -65,9 +65,15 @@ class Command(PandasCommand):
         patch = parser.add_argument_group(title="Custom Patching Options")
         patch.add_argument(
             "-m",
-            "--matchinput",
+            "--match-input",
             metavar="FILE",
             default=None,
+            help="path to the matching file"
+        )
+        patch.add_argument(
+            "-c",
+            "--check-matched",
+            action="store_true",
             help="path to the matching file"
         )
 
@@ -76,7 +82,8 @@ class Command(PandasCommand):
         self.match_enabled = 'match' in args
         self.cancel_enabled = 'cancel' in args
 
-        self.match_path = Path(opts.matchinput or "")
+        self.match_path = Path(opts.match_input or "")
+        self.check_match = self.match_enabled and opts.check_matched
         if not self.match_path.is_file() and self.match_enabled:
             raise UsageError(
                 "Invalid -m value, use a valid path to a file", print_help=False)
@@ -105,6 +112,7 @@ class Command(PandasCommand):
         self.logger.info('Reading input data...')
         data = self.read_input()
 
+        matched_combined_field_name = f'{self.matched_meta_field_name_prefix}_combined_name'
         if self.match_enabled:
             if not set(self.matching_fields).issubset(set(Study.fields)):
                 raise UsageError(
@@ -112,25 +120,36 @@ class Command(PandasCommand):
 
             self.logger.info('Reading matching data...')
             matching_data = self.pd.read_excel(
-                self.match_path, sheet_name=self.matching_fields, header=None)
+                self.match_path, sheet_name=self.matching_fields, header=None, keep_default_na=False, na_values=self.na_values, na_filter=True)
 
             self.logger.info('Start matching')
             for field_name in self.matching_fields:
                 data = self.pd.merge(
-                    # TODO: remove after deleting not applicable or change it so that only '' and None are
-                    # Has to be done because of merging problems with the value not applicable
-                    data.fillna(value={field_name: ''}),
+                    data,
                     matching_data[field_name].iloc[:, 1:].rename(columns={
                         1: f'{self.matched_meta_field_name_prefix}_{field_name}',
                         2: field_name
                     }),
                     how='left',
                     on=field_name,
-                    # validate='m:1' Problem with not applicable!
+                    validate='m:1'
                 )
-            data[f'{self.matched_meta_field_name_prefix}_combined_name'] = data[[f'{self.matched_meta_field_name_prefix}_{field_name}' for field_name in self.matching_fields]].apply(
+            data[matched_combined_field_name] = data[[f'{self.matched_meta_field_name_prefix}_{field_name}' for field_name in self.matching_fields]].apply(
                 lambda x: ''.join([str(y) for y in x.values if str(y) != "nan"]), axis='columns')
+            data.loc[data[matched_combined_field_name] ==
+                     '', matched_combined_field_name] = self.pd.NA
             self.logger.info('Matching finished')
+
+        if self.check_match:
+            self.logger.info('Start match checking')
+            not_matched = data.loc[data[matched_combined_field_name].isna()]
+            type1 = sorted(
+                list(set(not_matched.loc[data['centre_name'].notna(), 'centre_name'].values)))
+            type2 = sorted(list(set(not_matched.loc[data['centre_name_of_investigator'].notna(
+            ), 'centre_name_of_investigator'].values)))
+            print(len(type1), type1)
+            print(len(type2), type2)
+            self.logger.info('Match checking finished')
 
         if self.cancel_enabled:
             self.logger.info('Start cancel detection')
@@ -142,10 +161,9 @@ class Command(PandasCommand):
                 [fr'(\b[^.!?]*{x}\S*\b[^.!?]*(?P<end{i}>[.!?]+)?(?(end{i})|$))' for i, x in enumerate(self.study_cancelled_patterns)]), flags=re.IGNORECASE).apply(lambda x: '; '.join([str(y) for y in x.values if not re.match(r'nan|[.!?]+', str(y))]), axis='columns')
 
             data[self.updated_state_meta_field_name] = data['state']
-            query = data[self.study_cancelled_meta_field_name].fillna(
-                False) == True
+            query = data[self.study_cancelled_meta_field_name].fillna(False)
             data.loc[query,
-                            self.updated_state_meta_field_name] = 'Cancelled'
+                     self.updated_state_meta_field_name] = 'Cancelled'
             self.logger.info('Cancel detection finished')
 
         self.logger.info('Writing output data...')
