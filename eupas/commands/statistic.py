@@ -60,7 +60,7 @@ class Command(PandasCommand):
             data[f'{field}_details'] = values.str[1]
 
         for field in self.yes_eq_true_fields:
-            data[field] = self.np.where(data[field] == 'Yes', True, False)
+            data[field] = np.where(data[field] == 'Yes', True, False)
 
         req_by_reg = data['requested_by_regulator'].str.split(': ')
         data['requested_by_regulator'] = req_by_reg.str[0]
