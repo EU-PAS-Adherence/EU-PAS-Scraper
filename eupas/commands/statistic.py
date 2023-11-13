@@ -8,6 +8,8 @@ from eupas.commands import PandasCommand
 
 class Command(PandasCommand):
 
+    import numpy as np
+
     group_by_field_name = '$MATCHED_combined_name'
     # group_by_field_name = ['$MATCHED_combined_name', '$UPDATED_state']
 
@@ -45,7 +47,7 @@ class Command(PandasCommand):
     def short_desc(self):
         return "Runs statistics with input file data."
 
-    def preprocess(self, data: PandasCommand.pd.DataFrame):
+    def preprocess(self, data):
         data.loc[data['$CANCELLED'].notna(
         ), '$CANCELLED'] = data.loc[data['$CANCELLED'].notna(), '$CANCELLED'].astype(bool)
 
@@ -75,6 +77,7 @@ class Command(PandasCommand):
         return data
 
     def run(self, args, opts):
+        super().run(args, opts)
         self.logger = logging.getLogger()
         self.logger.info('Start stats')
         self.logger.info('Reading input data...')

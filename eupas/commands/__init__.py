@@ -6,9 +6,6 @@ from scrapy.exceptions import UsageError
 
 class PandasCommand(ScrapyCommand):
 
-    import pandas as pd
-    import numpy as np
-
     requires_project = True
     na_values = [
         "",
@@ -31,7 +28,7 @@ class PandasCommand(ScrapyCommand):
         "nan",
         "null"
     ]
-
+        
     def add_options(self, parser):
         ScrapyCommand.add_options(self, parser)
         patch = parser.add_argument_group(title="Custom Pandas Options")
@@ -66,6 +63,10 @@ class PandasCommand(ScrapyCommand):
             raise UsageError(
                 "Invalid -i value, use a valid path to a folder", print_help=False)
         self.output_folder.mkdir(parents=True, exist_ok=True)
+    
+    def run(self, args, opts) -> None:
+        import pandas as pd
+        PandasCommand.pd = pd
 
     def read_input(self):
         input_data = None

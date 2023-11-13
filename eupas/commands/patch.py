@@ -1,3 +1,4 @@
+import json
 import logging
 from pathlib import Path
 import re
@@ -14,6 +15,8 @@ class Command(PandasCommand):
 
     matched_meta_field_name_prefix = '$MATCHED'
     matching_fields = ['centre_name', 'centre_name_of_investigator']
+    match_checking_file_name_prefix = 'missing'
+    match_checking_fields = matching_fields
 
     study_cancelled_meta_field_name = '$CANCELLED'
     study_cancelled_patterns = [
@@ -98,6 +101,7 @@ class Command(PandasCommand):
         return "Patch the input file by matching the provided field_names"
 
     def run(self, args, opts):
+        super().run(args, opts)
         if len(args) == 0:
             raise UsageError(
                 "running 'scrapy patch' without additional arguments is not supported"
@@ -143,12 +147,14 @@ class Command(PandasCommand):
         if self.check_match:
             self.logger.info('Start match checking')
             not_matched = data.loc[data[matched_combined_field_name].isna()]
-            type1 = sorted(
-                list(set(not_matched.loc[data['centre_name'].notna(), 'centre_name'].values)))
-            type2 = sorted(list(set(not_matched.loc[data['centre_name_of_investigator'].notna(
-            ), 'centre_name_of_investigator'].values)))
-            print(len(type1), type1)
-            print(len(type2), type2)
+            check_match_data = {
+                field: sorted(list(set(not_matched.loc[data[field].notna(), field].values))) for field in self.match_checking_fields
+            }
+            with open(self.output_folder / f'{self.match_checking_file_name_prefix}_all.json', 'w', encoding='utf-8') as f:
+                json.dump(check_match_data, f, indent='\t', ensure_ascii=False)
+            for field_name, missing in check_match_data.items():
+                with open(self.output_folder / f'{self.match_checking_file_name_prefix}_{field_name}.txt', 'w', encoding='utf-8') as f:
+                    f.write('\n'.join(missing))
             self.logger.info('Match checking finished')
 
         if self.cancel_enabled:
