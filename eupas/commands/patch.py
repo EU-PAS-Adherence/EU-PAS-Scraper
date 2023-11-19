@@ -77,19 +77,28 @@ class Command(PandasCommand):
             "-c",
             "--check-matched",
             action="store_true",
-            help="path to the matching file"
+            help="check if all fields matched"
+        )
+        patch.add_argument(
+            "-d",
+            "--detailed-cancel-fields",
+            action="store_true",
+            help="add additional cancel fields"
         )
 
     def process_options(self, args, opts):
         PandasCommand.process_options(self, args, opts)
         self.match_enabled = 'match' in args
+        self.check_matched = self.match_enabled and opts.check_matched
         self.cancel_enabled = 'cancel' in args
+        self.detailed_cancel_fields = self.cancel_enabled and opts.detailed_cancel_fields
 
         self.match_path = Path(opts.match_input or "")
-        self.check_match = self.match_enabled and opts.check_matched
+
         if not self.match_path.is_file() and self.match_enabled:
             raise UsageError(
                 "Invalid -m value, use a valid path to a file", print_help=False)
+
         if self.match_path.suffix != '.xlsx' and self.match_enabled:
             raise UsageError(
                 "Invalid -m value, xlsx file expected", print_help=False)
@@ -102,10 +111,12 @@ class Command(PandasCommand):
 
     def run(self, args, opts):
         super().run(args, opts)
+
         if len(args) == 0:
             raise UsageError(
                 "running 'scrapy patch' without additional arguments is not supported"
             )
+
         if not set(args).issubset(self.commands):
             raise UsageError(
                 f"running 'scrapy patch' without one of these commands is not supported: {', '.join(self.commands)}"
@@ -138,39 +149,55 @@ class Command(PandasCommand):
                     on=field_name,
                     validate='m:1'
                 )
+
             data[matched_combined_field_name] = data[[f'{self.matched_meta_field_name_prefix}_{field_name}' for field_name in self.matching_fields]].apply(
-                lambda x: ''.join([str(y) for y in x.values if str(y) != "nan"]), axis='columns')
+                lambda x: ''.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
             data.loc[data[matched_combined_field_name] ==
                      '', matched_combined_field_name] = self.pd.NA
             self.logger.info('Matching finished')
 
-        if self.check_match:
-            self.logger.info('Start match checking')
-            not_matched = data.loc[data[matched_combined_field_name].isna()]
-            check_match_data = {
-                field: sorted(list(set(not_matched.loc[data[field].notna(), field].values))) for field in self.match_checking_fields
-            }
-            with open(self.output_folder / f'{self.match_checking_file_name_prefix}_all.json', 'w', encoding='utf-8') as f:
-                json.dump(check_match_data, f, indent='\t', ensure_ascii=False)
-            for field_name, missing in check_match_data.items():
-                with open(self.output_folder / f'{self.match_checking_file_name_prefix}_{field_name}.txt', 'w', encoding='utf-8') as f:
-                    f.write('\n'.join(missing))
-            self.logger.info('Match checking finished')
+            if self.check_matched:
+                self.logger.info('Start match checking')
+                not_matched = data.loc[data[matched_combined_field_name].isna()]
+                check_match_data = {
+                    field: sorted(list(set(not_matched.loc[data[field].notna(), field].values))) for field in self.match_checking_fields
+                }
+
+                with open(self.output_folder / f'{self.match_checking_file_name_prefix}_all.json', 'w', encoding='utf-8') as f:
+                    json.dump(check_match_data, f,
+                              indent='\t', ensure_ascii=False)
+
+                for field_name, missing in check_match_data.items():
+                    with open(self.output_folder / f'{self.match_checking_file_name_prefix}_{field_name}.txt', 'w', encoding='utf-8') as f:
+                        f.write('\n'.join(missing))
+
+                self.logger.info('Match checking finished')
 
         if self.cancel_enabled:
             self.logger.info('Start cancel detection')
             data[self.study_cancelled_meta_field_name] = data['description'].str.contains(
                 '|'.join(self.study_cancelled_patterns), case=False)
-            data[f'{self.study_cancelled_meta_field_name}_extracted_word'] = data['description'].str.extract('|'.join(
-                [fr'({x}\S*\b)' for x in self.study_cancelled_patterns]), flags=re.IGNORECASE).apply(lambda x: '; '.join([str(y) for y in x.values if str(y) != "nan"]), axis='columns')
-            data[f'{self.study_cancelled_meta_field_name}_extracted_sentence'] = data['description'].str.extract('|'.join(
-                [fr'(\b[^.!?]*{x}\S*\b[^.!?]*(?P<end{i}>[.!?]+)?(?(end{i})|$))' for i, x in enumerate(self.study_cancelled_patterns)]), flags=re.IGNORECASE).apply(lambda x: '; '.join([str(y) for y in x.values if not re.match(r'nan|[.!?]+', str(y))]), axis='columns')
 
             data[self.updated_state_meta_field_name] = data['state']
             query = data[self.study_cancelled_meta_field_name].fillna(False)
-            data.loc[query,
-                     self.updated_state_meta_field_name] = 'Cancelled'
+            data.loc[query, self.updated_state_meta_field_name] = 'Cancelled'
             self.logger.info('Cancel detection finished')
+
+            if self.detailed_cancel_fields:
+                self.logger.info('Start adding detailed cancel fields')
+
+                # TODO: Only extracts first match
+                data[f'{self.study_cancelled_meta_field_name}_extracted_word'] = data['description'].str.extract('|'.join(
+                    [fr'({x}\S*\b)' for x in self.study_cancelled_patterns]), flags=re.IGNORECASE).apply(
+                        lambda x: '; '.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
+
+                # TODO: Only extracts first matched sentence
+                data[f'{self.study_cancelled_meta_field_name}_extracted_sentence'] = data['description'].str.extract('|'.join(
+                    [fr'(\b[^.!?]*{x}\S*\b[^.!?]*(?P<end{i}>[.!?]+)?(?(end{i})|$))' for i, x in enumerate(self.study_cancelled_patterns)]),
+                    flags=re.IGNORECASE).apply(
+                        lambda x: '; '.join([str(y) for y in x.values if not re.match(r'nan|[.!?]+', str(y))]), axis='columns')
+
+                self.logger.info('Added detailed cancel fields')
 
         self.logger.info('Writing output data...')
         self.write_output(data, '_patched')

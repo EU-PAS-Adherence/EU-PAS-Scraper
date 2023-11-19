@@ -48,8 +48,7 @@ class Command(PandasCommand):
     def preprocess(self, data):
         import numpy as np
 
-        data.loc[data['$CANCELLED'].notna(
-        ), '$CANCELLED'] = data.loc[data['$CANCELLED'].notna(), '$CANCELLED'].astype(bool)
+        data['$CANCELLED'] = data['$CANCELLED'].astype(bool).fillna(False)
 
         for field in self.array_fields:
             data[field] = data[field].str.split('; ')

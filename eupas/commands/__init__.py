@@ -61,7 +61,7 @@ class PandasCommand(ScrapyCommand):
         self.output_folder = Path(opts.output or "")
         if not self.output_folder.is_dir():
             raise UsageError(
-                "Invalid -i value, use a valid path to a folder", print_help=False)
+                "Invalid -o value, use a valid path to a folder", print_help=False)
         self.output_folder.mkdir(parents=True, exist_ok=True)
 
     def run(self, args, opts) -> None:
