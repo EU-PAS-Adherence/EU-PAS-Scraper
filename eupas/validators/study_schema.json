@@ -133,6 +133,10 @@
                 }
             ]
         },
+        "description": {
+            "type": "string",
+            "minLength": 1
+        },
         "requested_by_regulator": {
             "type": "string",
             "oneOf": [
@@ -576,6 +580,14 @@
             },
             "minItems": 1,
             "$comment": "uniqueItems is not possible, because 12 out of 2535 have duplicate fields"
+        },
+        "other_documents_url": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "pattern": "^/encepp/openAttachment/\\S+/(\\d{4,6})?(;jsessionid=\\S+!-?\\d{8,10})?$"
+            },
+            "minItems": 1
         }
     }
 }
