@@ -9,35 +9,21 @@ from eupas.commands import PandasCommand
 class Command(PandasCommand):
 
     group_by_field_name = '$MATCHED_combined_name'
-    # group_by_field_name = ['$MATCHED_combined_name', '$UPDATED_state']
 
+    str_dummy_fields = ['age_population', 'other_population']
+    dummy_fields = ['$UPDATED_state']
     array_fields = [
         'age_population', 'countries', 'data_sources_registered_with_encepp',
         'data_sources_not_registered_with_encepp', 'data_source_types',
         'funding_other_names', 'funding_other_percentage', 'medical_conditions',
-        'primary_outcomes', 'references', 'scopes', 'secondary_outcomes',
-        'sex_population', 'study_design', 'substance_atc', 'substance_inn',
-        'other_documents_url', 'other_population'
+        'other_population', 'primary_outcomes', 'references', 'scopes',
+        'secondary_outcomes', 'sex_population', 'study_design', 'substance_atc',
+        'substance_inn', 'other_documents_url'
     ]
     detail_split_fields = ['medical_conditions',
                            'primary_outcomes', 'secondary_outcomes']
     yes_eq_true_fields = ['collaboration_with_research_network', 'follow_up', 'medical_conditions',
                           'primary_outcomes', 'secondary_outcomes', 'uses_established_data_source']
-
-    def add_options(self, parser):
-        PandasCommand.add_options(self, parser)
-        # patch = parser.add_argument_group(title="Custom Statistic Options")
-        # patch.add_argument(
-        #     "-m",
-        #     "--matchinput",
-        #     metavar="FILE",
-        #     default=None,
-        #     help="path to the matching file"
-        # )
-
-    def process_options(self, args, opts):
-        PandasCommand.process_options(self, args, opts)
-        # self.match_enabled = 'match' in args
 
     def syntax(self):
         return "[options]"
@@ -49,6 +35,16 @@ class Command(PandasCommand):
         import numpy as np
 
         data['$CANCELLED'] = data['$CANCELLED'].astype(bool).fillna(False)
+
+        for field in self.str_dummy_fields:
+            field_dummies = data[field].str.get_dummies('; ').rename(
+                columns=lambda x: f'{field}:{x}')
+            data = PandasCommand.pd.concat([data, field_dummies], axis=1)
+
+        for field in self.dummy_fields:
+            field_dummies = PandasCommand.pd.get_dummies(
+                data[field], prefix=f'{field}:')
+            data = PandasCommand.pd.concat([data, field_dummies], axis=1)
 
         for field in self.array_fields:
             data[field] = data[field].str.split('; ')
@@ -85,45 +81,43 @@ class Command(PandasCommand):
         grouped = data.groupby(by=self.group_by_field_name, dropna=False)
 
         def set_sum(x: PandasCommand.pd.Series):
-            return sorted(list(set(x.fillna('').apply(list).sum())))
+            return '; '.join(sorted(list(set(x.fillna('').apply(list).sum()))))
 
         def bool_sum(x: PandasCommand.pd.Series):
-            # x.fillna(0.0).astype(float).sum()
             return x.dropna().astype(float).sum()
 
         def setify(x: PandasCommand.pd.Series):
-            return sorted(list(set(x.dropna().to_list())))
+            return '; '.join(sorted(list(set(x.dropna().to_list()))))
 
-        def dummies(x: PandasCommand.pd.Series):
-            # print(x.explode().str.get_dummies().sum())
-            return x.explode().str.get_dummies().sum()
+        str_dummie_agg = {col.split(':')[-1]: (col, bool_sum)
+                          for col in data for field in self.str_dummy_fields if col.startswith(field) and ':' in col}
+
+        dummie_agg = {col.split(':')[-1]: (col, bool_sum)
+                      for col in data for field in self.dummy_fields if col.startswith(field) and ':' in col}
 
         stats = grouped.agg(
-            {
-                'age_population': [set_sum, dummies],
-                'collaboration_with_research_network': bool_sum,
-                'countries': [set_sum, dummies],
-                'eu_pas_register_number': 'count',
-                'follow_up': bool_sum,
-                'medical_conditions': bool_sum,
-                'medical_conditions_details': setify,
-                'number_of_subjects': ['min', 'max', 'mean', 'median'],
-                'other_population': [set_sum, dummies],
-                'primary_outcomes': bool_sum,
-                'requested_by_regulator': bool_sum,
-                'requested_by_regulator_details': [set_sum, dummies],
-                'secondary_outcomes': bool_sum,
-                'uses_established_data_source': bool_sum
-            }
+            num_collabs_with_research_network=(
+                'collaboration_with_research_network', bool_sum),
+            which_countries=('countries', set_sum),
+            num_with_follow_up=('follow_up', bool_sum),
+            num_with_medical_conditions=('medical_conditions', bool_sum),
+            which_medical_conditions=('medical_conditions_details', setify),
+            min_number_of_subjects=('number_of_subjects', 'min'),
+            max_number_of_subjects=('number_of_subjects', 'max'),
+            mean_number_of_subjects=('number_of_subjects', 'mean'),
+            median_number_of_subjects=('number_of_subjects', 'median'),
+            num_with_primary_outcomes=('primary_outcomes', bool_sum),
+            num_requested_by_regulator=('requested_by_regulator', bool_sum),
+            num_with_secondary_outcomes=('secondary_outcomes', bool_sum),
+            num_using_established_data_sources=(
+                'uses_established_data_source', bool_sum),
+            **str_dummie_agg,
+            **dummie_agg
         )
 
-        # for name, group in grouped:
-        #     print(name)
-        #     print(group)
-
-        # print(grouped.count())
+        sizes = grouped.size().rename('num_studies')
+        stats = stats.merge(sizes, left_index=True, right_index=True)
 
         self.logger.info('Writing output data...')
         self.write_output(data, '_statistics')
         self.write_output(stats, '_statistics_agg')
-        # self.write_output(grouped.count(), '_statistics_count')
