@@ -10,7 +10,7 @@ from tqdm import tqdm
 from enum import Enum
 from pathlib import Path
 import re
-from typing import List, Generator, Union
+from typing import List, Generator, Union, Tuple
 
 from eupas.items import Study
 
@@ -32,13 +32,15 @@ class EU_PAS_Spider(spiders.Spider):
     '''
 
     # Overriden Spider Settings
-    # name is used to start a spider with the scrapy cmd-tool
+    # name is used to start a spider with the scrapy cmd crawl or runspider
+    # The eupas cmd runs this spider directly and simplifies arguments
     name = 'eupas'
     # custom_settings contains own settings, but can also override the values in settings.py
     custom_settings = {
         'PROGRESS_LOGGING': False,
         'FILTER_STUDIES': False,
-        'SAVE_PDF': False
+        'SAVE_PDF': False,
+        'SAVE_PROTOCOLS_AND_RESULTS': False
     }
     # These are the allowed domains. This spider should only follow urls in these domains
     allowed_domains = ['encepp.eu']
@@ -47,6 +49,7 @@ class EU_PAS_Spider(spiders.Spider):
     base_url = 'https://www.encepp.eu'
     query_url = f'{base_url}/encepp/studySearch.htm'
     pdf_base_url = f'{base_url}//encepp/enceppPrint.pdf?screen=search'
+
     # NOTE: Only the Content-Type is important for the POST request
     query_headers = {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -62,16 +65,17 @@ class EU_PAS_Spider(spiders.Spider):
     # NOTE: There are other queries which aren't included in this string
     template_string = 'studyCriteria.resourceLabel={eu_pas_register_number}&studyCriteria.studyRMP={risk_managment_plan}'
 
-    # RegEx is used to remove the sessionid in the urls => make scraper less visible
+    # RegEx is used to remove the sessionid in the urls
     # NOTE: Use proxy rotation for better evasion
     session_regex = re.compile(r'jsessionid=.+\?')
 
-    def __init__(self, progress_logging=False, filter_studies=False, filter_rmp_category=None, filter_eupas_id=None, save_pdf=False, *args, **kwargs):
+    def __init__(self, progress_logging=False, filter_studies=False, filter_rmp_category=None, filter_eupas_id=None, save_pdf=False, save_protocols_and_results=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.custom_settings.update({
             'PROGRESS_LOGGING': progress_logging,
             'FILTER_STUDIES': filter_studies,
-            'SAVE_PDF': save_pdf
+            'SAVE_PDF': save_pdf,
+            'SAVE_PROTOCOLS_AND_RESULTS': save_protocols_and_results
         })
         self.rmp_query_val = filter_rmp_category.value if filter_rmp_category else ''
         self.eupas_id_query_val = filter_eupas_id or ''
@@ -191,15 +195,21 @@ class EU_PAS_Spider(spiders.Spider):
             './/*[@id="2"]')[0], study=study)
         self.parse_method_details(details=response.xpath(
             './/*[@id="3"]')[0], study=study)
-        self.parse_document_details(
+        protocol_url, result_url = self.parse_document_details(
             details=response.xpath('.//*[@id="4"]')[0], study=study)
+
+        if self.custom_settings.get('SAVE_PROTOCOLS_AND_RESULTS'):
+            if protocol_url:
+                yield http.Request(url=f'{self.base_url}{protocol_url}', callback=self.save_pdf, cb_kwargs=dict(study=study, suffix='_latest_protocols'))
+            if result_url:
+                yield http.Request(url=f'{self.base_url}{result_url}', callback=self.save_pdf, cb_kwargs=dict(study=study, suffix='_latest_results'))
 
         yield study
 
-    def save_pdf(self, response: http.Response, study: Study) -> None:
+    def save_pdf(self, response: http.Response, study: Study, suffix='') -> None:
         file_path = Path(f"{self.settings.get('OUTPUT_DIRECTORY')}/PDFs/")
         file_path.mkdir(parents=True, exist_ok=True)
-        pdf_file = file_path / f"{study['eu_pas_register_number']}.pdf"
+        pdf_file = file_path / f"{study['eu_pas_register_number']}{suffix}.pdf"
         pdf_file.write_bytes(response.body)
 
     def _get_block_from_details(
@@ -258,7 +268,8 @@ class EU_PAS_Spider(spiders.Spider):
         # Second Block: Research centres and Investigator details
         block = self._get_block_from_details(details, index=2)
         if len(block) == 2:
-            study['centre_name'] = block[0].xpath('./span[2]//text()').get().strip()
+            study['centre_name'] = block[0].xpath(
+                './span[2]//text()').get().strip()
             study['centre_location'] = block[1].xpath(
                 './span[2]//text()').get()
         elif len(block) == 4:
@@ -445,10 +456,12 @@ class EU_PAS_Spider(spiders.Spider):
         block = self._get_block_from_details(details, index=4)
         study['follow_up'] = block[0].xpath('./span[2]/text()').get()
 
-    def parse_document_details(self, details: selector.Selector, study: Study) -> None:
+    def parse_document_details(self, details: selector.Selector, study: Study) -> Union[None, Tuple[str]]:
         '''
         Parses the details of the fourth tab: "Documents"
         '''
+
+        latest_protocol_url = latest_result_protocol = None
 
         # Second Block: Full protocol
         block = self._get_block_from_details(details, index=2)
@@ -458,6 +471,7 @@ class EU_PAS_Spider(spiders.Spider):
             # num_cells should be 2, when only one url is expected, but sometimes there is an invisible third cell with an empty url
             if protocol_url := block[0].xpath('./span[2]/a/@href').get():
                 study['protocol_document_url'] = protocol_url
+                latest_protocol_url = protocol_url
             elif block[0].xpath('./span[1]').re_first("Available when the study ends"):
                 study['protocol_document_url'] = "Not public until study ends"
         elif num_cells == 4:
@@ -465,8 +479,8 @@ class EU_PAS_Spider(spiders.Spider):
                 study['protocol_document_url'] = protocol_url
             elif block[0].xpath('./span[3]').re_first("Available when the study ends"):
                 study['protocol_document_url'] = "Not public until study ends"
-            study['latest_protocol_document_url'] = block[0].xpath(
-                './span[4]/a/@href').get()
+            latest_protocol_url = block[0].xpath('./span[4]/a/@href').get()
+            study['latest_protocol_document_url'] = latest_protocol_url
         else:
             self.logger.warning(
                 'Found unexpected number of protocol document url cells in the following study:\n %s', study['url'])
@@ -479,11 +493,12 @@ class EU_PAS_Spider(spiders.Spider):
             # num_cells should be 2, when only one url is expected, but sometimes there is an invisible third cell with an empty url
             if result_url := block[0].xpath('./span[2]/a/@href').get():
                 study['result_document_url'] = result_url
+                latest_result_protocol = result_url
         elif num_cells == 4:
             if result_url := block[0].xpath('./span[3]/a/@href').get():
                 study['result_document_url'] = result_url
-            study['latest_result_document_url'] = block[0].xpath(
-                './span[4]/a/@href').get()
+            latest_result_protocol = block[0].xpath('./span[4]/a/@href').get()
+            study['latest_result_document_url'] = latest_result_protocol
         else:
             self.logger.warning(
                 'Found unexpected number of result document url cells in the following study:\n %s', study['url'])
@@ -499,6 +514,8 @@ class EU_PAS_Spider(spiders.Spider):
         else:
             self.logger.warning(
                 'Could not find other document block in the following study:\n %s', study['url'])
+
+        return (latest_protocol_url, latest_result_protocol)
 
     def idle(self):
         if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):

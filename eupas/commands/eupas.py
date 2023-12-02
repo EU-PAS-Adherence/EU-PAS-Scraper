@@ -22,7 +22,10 @@ class Command(CrawlCommand):
             "--debug", action="store_true", help="enable debugging"
         )
         group.add_argument(
-            "-P", "--download-pdf", action="store_true", help="downloads a pdf file for each study detail page"
+            "-PDF", "--download-pdf", action="store_true", help="downloads a pdf file for each study detail page"
+        )
+        group.add_argument(
+            "-PR", "--download-protocols-results", action="store_true", help="downloads the latest protocols and results of every study"
         )
 
     def process_options(self, args, opts):
@@ -35,6 +38,8 @@ class Command(CrawlCommand):
         opts.spargs.setdefault('progress_logging', not opts.debug)
         opts.spargs.setdefault('filter_studies', bool(opts.filter))
         opts.spargs.setdefault('save_pdf', opts.download_pdf)
+        opts.spargs.setdefault('save_protocols_and_results',
+                               opts.download_protocols_results)
         if opts.filter:
             id_candidate = opts.filter.lower().replace('eupas', '')
             if id_candidate.isdigit():
