@@ -44,7 +44,7 @@ class Study(item.Item):
     study_type = item.Field(required=True)
     description = item.Field()
     requested_by_regulator = item.Field(required=True)
-    risk_managment_plan = item.Field()
+    risk_management_plan = item.Field()
     regulatory_procedure_number = item.Field()
     centre_name = item.Field()
     centre_location = item.Field()
@@ -88,7 +88,8 @@ class Study(item.Item):
     data_sources_registered_with_encepp = item.Field()
     data_sources_not_registered_with_encepp = item.Field()
     scopes = item.Field(required=True)
-    primary_scope = item.Field(required=True, serializer=serialize_primary_scope)
+    primary_scope = item.Field(
+        required=True, serializer=serialize_primary_scope)
     primary_outcomes = item.Field(required=True)
     secondary_outcomes = item.Field(required=True)
     study_design = item.Field(required=True)

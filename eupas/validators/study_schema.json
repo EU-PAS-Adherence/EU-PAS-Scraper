@@ -151,7 +151,7 @@
                 }
             ]
         },
-        "risk_managment_plan": {
+        "risk_management_plan": {
             "type": "string",
             "enum": [
                 "EU RMP category 1 (imposed as condition of marketing authorisation)",

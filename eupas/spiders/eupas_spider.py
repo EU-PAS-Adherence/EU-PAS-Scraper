@@ -63,7 +63,7 @@ class EU_PAS_Spider(spiders.Spider):
     # Filter Settings
     # This string is used to query the studies
     # NOTE: There are other queries which aren't included in this string
-    template_string = 'studyCriteria.resourceLabel={eu_pas_register_number}&studyCriteria.studyRMP={risk_managment_plan}'
+    template_string = 'studyCriteria.resourceLabel={eu_pas_register_number}&studyCriteria.studyRMP={risk_management_plan}'
 
     # RegEx is used to remove the sessionid in the urls
     # NOTE: Use proxy rotation for better evasion
@@ -93,7 +93,7 @@ class EU_PAS_Spider(spiders.Spider):
         query = None
         if self.custom_settings.get('FILTER_STUDIES'):
             query = self.template_string.format(
-                risk_managment_plan=self.rmp_query_val,
+                risk_management_plan=self.rmp_query_val,
                 eu_pas_register_number=self.eupas_id_query_val
             )
 
@@ -261,7 +261,7 @@ class EU_PAS_Spider(spiders.Spider):
         study['requested_by_regulator'] = details.xpath(
             './div[6]/span[2]//text()').get()
         if rpm := details.xpath('./div[7]/span[2]//text()').get().strip():
-            study['risk_managment_plan'] = rpm
+            study['risk_management_plan'] = rpm
         if rpn := details.xpath('./div[8]/span[2]//text()').get():
             study['regulatory_procedure_number'] = rpn
 

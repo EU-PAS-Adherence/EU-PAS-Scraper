@@ -50,11 +50,11 @@ class Command(CrawlCommand):
 
     def get_rmp(self, value):
         rmp = value.lower()
-        if rmp in ['rmp1', 'risk_managment_plan_1']:
+        if rmp in ['rmp1', 'risk_management_plan_1']:
             return RMP.EU_RPM_category_1
-        elif rmp in ['rmp2', 'risk_managment_plan_2']:
+        elif rmp in ['rmp2', 'risk_management_plan_2']:
             return RMP.EU_RPM_category_2
-        elif rmp in ['rmp3', 'risk_managment_plan_3']:
+        elif rmp in ['rmp3', 'risk_management_plan_3']:
             return RMP.EU_RPM_category_3
         elif rmp in ["noneu", "non_eu", "noneurmp", "non_eu_rmp", "otherrmp"]:
             return RMP.non_EU_RPM
