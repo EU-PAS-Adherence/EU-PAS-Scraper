@@ -37,10 +37,14 @@ class Command(PandasCommand):
     def preprocess(self, data):
         import numpy as np
 
-        data['$CANCELLED'] = data['$CANCELLED'].astype(bool).fillna(False)
+        # NOTE: Pandas reads the boolean column with NA Values as float
+        # We need to fill na first because NA is True else
+        data['$CANCELLED'] = data['$CANCELLED'].fillna(False).astype(bool)
         self.logger.info(
             f'Excluding {data["$CANCELLED"].astype(int).sum()} cancelled studies...')
         data = data.loc[~data['$CANCELLED']]
+
+        # print(data['scopes'].str.get_dummies('; ').sum().to_excel('scopes.xlsx'))
 
         self.logger.info('Adding Dummies')
         for field in self.str_dummy_fields:
@@ -105,27 +109,42 @@ class Command(PandasCommand):
             'Adults (75 years and over)': '65+ years'
         }
 
+        scope_list = [
+            'Risk assessment',
+            'Effectiveness evaluation',
+            'Drug utilisation study',
+            'Disease epidemiology'
+        ]
+
         def get_funding_sources():
-            companies = np.where(
-                df.funding_companies_percentage > 0, 'Companies', '')
-            charities = np.where(
-                df.funding_charities_percentage > 0, 'Charities', '')
+            funded_by_companies = df.funding_companies_percentage > 0
+            funded_by_charities = df.funding_charities_percentage > 0
+            funded_by_government_bodies = df.funding_government_body_percentage > 0
+            fundes_by_research_councils = df.funding_research_councils_percentage > 0
+            funded_by_eu_schemes = df.funding_eu_scheme_percentage > 0
+            funded_by_other = df.funding_other_percentage.str[0] > 0
+
+            companies = np.where(funded_by_companies, 'Companies', '')
+            charities = np.where(funded_by_charities, 'Charities', '')
             government_bodies = np.where(
-                df.funding_government_body_percentage > 0, 'Government Bodies', '')
+                funded_by_government_bodies, 'Government Bodies', '')
             research_councils = np.where(
-                df.funding_research_councils_percentage > 0, 'Research Councils', '')
-            eu_schemes = np.where(
-                df.funding_eu_scheme_percentage > 0, 'EU Schemes', '')
-            other = np.where(
-                df.funding_other_percentage.str[0] > 0, 'Other', '')
-            return list(map(lambda x: x or PandasCommand.pd.NA, ['; '.join(filter(bool, x)) for x in zip(companies, charities, government_bodies,
-                                                                                                         research_councils, eu_schemes, other)]))
+                fundes_by_research_councils, 'Research Councils', '')
+            eu_schemes = np.where(funded_by_eu_schemes, 'EU Schemes', '')
+            other = np.where(funded_by_other, 'Other', '')
+
+            num_sources = sum(map(lambda x: x.astype(int), [
+                              funded_by_companies, funded_by_charities, funded_by_government_bodies, fundes_by_research_councils, funded_by_eu_schemes, funded_by_other]))
+            multiple_funding_sources = np.where(num_sources > 1, True, False)
+            return (list(map(lambda x: x or PandasCommand.pd.NA, ['; '.join(filter(bool, x)) for x in zip(companies, charities, government_bodies, research_councils, eu_schemes, other)])), multiple_funding_sources)
 
         categories = df.loc[:, [
             'state', 'risk_management_plan', 'follow_up',
             'requested_by_regulator', 'collaboration_with_research_network',
             'country_type', 'medical_conditions', 'uses_established_data_source',
             'primary_outcomes', 'secondary_outcomes']]
+
+        funded_by, multiple_funding_sources = get_funding_sources()
 
         categories = categories.assign(
             registration_date=df['registration_date'].dt.year,
@@ -137,7 +156,13 @@ class Command(PandasCommand):
             age_population=df['age_population'].apply(
                 lambda ages: '; '.join(sorted(list({age_map[x] for x in ages})))),
             sex_population=df['sex_population'].apply(
-                lambda x: list(reversed(sorted(x)))).str.join(' and ')
+                lambda x: list(reversed(sorted(x)))).str.join(' and '),
+            other_population=df['other_population'].apply(
+                lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
+            funded_by=funded_by,
+            multiple_funding_sources=multiple_funding_sources,
+            scopes=df['scopes'].apply(
+                lambda scopes: '; '.join(sorted(list({x if x in scope_list else 'Other' for x in scopes})))),
         )
         return categories
 
