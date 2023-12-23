@@ -5,6 +5,7 @@
 # https://docs.scrapy.org/en/latest/topics/feed-exports.html
 
 # Modified from:
+#   MIT License
 #   https://github.com/jesuslosada/scrapy-xlsx/blob/master/scrapy_xlsx/exporters.py
 
 from openpyxl import Workbook

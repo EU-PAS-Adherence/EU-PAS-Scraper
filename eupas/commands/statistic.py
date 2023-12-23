@@ -1,7 +1,4 @@
 import logging
-# from pathlib import Path
-
-# from scrapy.exceptions import UsageError
 
 from eupas.commands import PandasCommand
 
@@ -44,7 +41,7 @@ class Command(PandasCommand):
             f'Excluding {data["$CANCELLED"].astype(int).sum()} cancelled studies...')
         data = data.loc[~data['$CANCELLED']]
 
-        # print(data['scopes'].str.get_dummies('; ').sum().to_excel('scopes.xlsx'))
+        # data['scopes'].str.get_dummies('; ').sum().to_excel('scopes.xlsx')
 
         self.logger.info('Adding Dummies')
         for field in self.str_dummy_fields:
@@ -90,8 +87,7 @@ class Command(PandasCommand):
         data['funding_other_percentage'] = data['funding_other_percentage'].apply(
             lambda x: list(map(float, x)) if isinstance(x, list) else [0.0])
 
-        data.sort_index(axis=1, inplace=True)
-        return data
+        return data.sort_index(axis=1)
 
     def create_categories(self, data):
         import numpy as np
@@ -114,6 +110,36 @@ class Command(PandasCommand):
             'Effectiveness evaluation',
             'Drug utilisation study',
             'Disease epidemiology'
+        ]
+
+        data_source_list = [
+            'Prospective patient-based data collection',
+            'Disease/case registry',
+            'Prescription event monitoring',
+            'Administrative database, e.g. claims database',
+            'Routine primary care electronic patient registry',
+            'Exposure registry',
+            'Pharmacy dispensing records',
+            'Case-control surveillance',
+            'Spontaneous reporting'
+        ]
+
+        study_design_list = [
+            'Sentinel sites',
+            'Intensive monitoring schemes',
+            'Prescription event monitoring',
+            'Cross-sectional study',
+            'Cohort study',
+            'Case-control study',
+            'Case-series',
+            'Case-crossover',
+            'Self-controlled case series',
+            'Drug utilisation study',
+            'Pharmacokinetic study',
+            'Pharmacodynamic study',
+            'Drug interaction study',
+            'Randomised controlled trial',
+            'Non-randomised controlled trial'
         ]
 
         def get_funding_sources():
@@ -142,7 +168,7 @@ class Command(PandasCommand):
             'state', 'risk_management_plan', 'follow_up',
             'requested_by_regulator', 'collaboration_with_research_network',
             'country_type', 'medical_conditions', 'uses_established_data_source',
-            'primary_outcomes', 'secondary_outcomes']]
+            'primary_outcomes', 'secondary_outcomes', 'number_of_subjects']]
 
         funded_by, multiple_funding_sources = get_funding_sources()
 
@@ -150,7 +176,9 @@ class Command(PandasCommand):
             registration_date=df['registration_date'].dt.year,
             study_type=df['study_type'].str.split(r'; |: ').str[0],
             countries=df['countries'].apply(len),
-            number_of_subjects=df['number_of_subjects'].apply(
+            countries_grouped=df['countries'].apply(
+                lambda x: len(x) if len(x) < 3 else '3 or more'),
+            number_of_subjects_grouped=df['number_of_subjects'].apply(
                 lambda x: '<1000' if x < 1000 else '>10000' if x > 10000 else '1000-10000'
             ),
             age_population=df['age_population'].apply(
@@ -163,8 +191,13 @@ class Command(PandasCommand):
             multiple_funding_sources=multiple_funding_sources,
             scopes=df['scopes'].apply(
                 lambda scopes: '; '.join(sorted(list({x if x in scope_list else 'Other' for x in scopes})))),
+            data_source_types=df['data_source_types'].apply(
+                lambda sources: '; '.join(sorted(list({x if x in data_source_list else 'Other' for x in sources})))),
+            study_design=df['study_design'].apply(
+                lambda designs: '; '.join(sorted(list({x if x in study_design_list else 'Other' for x in designs})))),
         )
-        return categories
+
+        return categories.sort_index(axis=1)
 
     def create_grouped_agg(self, data):
         import numpy as np
