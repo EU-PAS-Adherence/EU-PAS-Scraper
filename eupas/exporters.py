@@ -4,9 +4,6 @@
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/feed-exports.html
 
-# Modified from:
-#   MIT License
-#   https://github.com/jesuslosada/scrapy-xlsx/blob/master/scrapy_xlsx/exporters.py
 
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
@@ -35,6 +32,9 @@ def uri_params(params, spider: Spider):
 
 
 class XlsxItemExporter(BaseItemExporter):
+    # Modified from:
+    #   scrapy_xlsx (MIT License)
+    #   https://github.com/jesuslosada/scrapy-xlsx/blob/master/scrapy_xlsx/exporters.py
 
     def __init__(
         self,

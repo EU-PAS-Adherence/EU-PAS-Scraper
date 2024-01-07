@@ -18,8 +18,7 @@ class Command(ScrapyCommand):
 
     requires_project = True
 
-    # and, &, Dept, Department, co, company, R&D
-    # delete all chars in () or []
+    # TODO: Improve initial performance
     junk_words = frozenset({
         'pharma', 'pharmaceuticals', 'therapeutics', 'international', 'group',
         'cro', 'kk', 'pvt', 'nhs foundation trust'

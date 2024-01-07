@@ -1,17 +1,22 @@
+import difflib
 import json
 import logging
 from pathlib import Path
 import re
+import requests
 
+from scrapy.commands.crawl import Command as CrawlCommand
 from scrapy.exceptions import UsageError
 
+from eupas.spiders.atc_spider import ATC_Spider
+from eupas.spiders.kegg_spider import KEGG_Drug_Spider
 from eupas.commands import PandasCommand
 from eupas.items import Study
 
 
 class Command(PandasCommand):
 
-    commands = frozenset(['match', 'cancel'])
+    commands = frozenset(['match', 'cancel', 'substances'])
 
     matched_meta_field_name_prefix = '$MATCHED'
     matching_fields = ['centre_name', 'centre_name_of_investigator']
@@ -77,21 +82,24 @@ class Command(PandasCommand):
             "-c",
             "--check-matched",
             action="store_true",
-            help="check if all fields matched"
+            help="checks if all fields matched and sets the correct exitcode based on the result"
         )
         patch.add_argument(
             "-d",
             "--detailed-cancel-fields",
             action="store_true",
-            help="add additional cancel fields"
+            help="adds additional cancel fields"
         )
 
     def process_options(self, args, opts):
         PandasCommand.process_options(self, args, opts)
         self.match_enabled = 'match' in args
         self.check_matched = self.match_enabled and opts.check_matched
+
         self.cancel_enabled = 'cancel' in args
         self.detailed_cancel_fields = self.cancel_enabled and opts.detailed_cancel_fields
+
+        self.substances_enabled = 'substances' in args
 
         self.match_path = Path(opts.match_input or "")
 
@@ -123,22 +131,25 @@ class Command(PandasCommand):
             )
 
         self.logger = logging.getLogger()
-        self.logger.info('Start patching')
+        self.logger.info('Starting patch script')
+        self.logger.info(f'Pandas {self.pd.__version__}')
         self.logger.info('Reading input data...')
         data = self.read_input()
 
         matched_combined_field_name = f'{self.matched_meta_field_name_prefix}_combined_name'
         if self.match_enabled:
+            self.logger.info('Start matching')
+
             if not set(self.matching_fields).issubset(set(Study.fields)):
                 raise UsageError(
                     "At least one patch value isn't a valid field name", print_help=False)
 
-            self.logger.info('Reading matching data...')
+            self.logger.info('\tReading matching data...')
             matching_data = self.pd.read_excel(
                 self.match_path, sheet_name=self.matching_fields, header=None, keep_default_na=False, na_values=self.na_values, na_filter=True)
 
-            self.logger.info('Start matching')
             for field_name in self.matching_fields:
+                # NOTE: If validation fails: check for duplicate original values in the matching file or values matching the na_values
                 data = self.pd.merge(
                     data,
                     matching_data[field_name].iloc[:, 1:].rename(columns={
@@ -159,17 +170,20 @@ class Command(PandasCommand):
             if self.check_matched:
                 self.logger.info('Start match checking')
                 not_matched = data.loc[data[matched_combined_field_name].isna()]
-                check_match_data = {
-                    field: sorted(list(set(not_matched.loc[data[field].notna(), field].values))) for field in self.match_checking_fields
-                }
+                if not not_matched.empty:
+                    check_match_data = {
+                        field: sorted(list(set(not_matched.loc[data[field].notna(), field].values))) for field in self.match_checking_fields
+                    }
 
-                with open(self.output_folder / f'{self.match_checking_file_name_prefix}_all.json', 'w', encoding='utf-8') as f:
-                    json.dump(check_match_data, f,
-                              indent='\t', ensure_ascii=False)
+                    with open(self.output_folder / f'{self.match_checking_file_name_prefix}_all.json', 'w', encoding='utf-8') as f:
+                        json.dump(check_match_data, f,
+                                  indent='\t', ensure_ascii=False)
 
-                for field_name, missing in check_match_data.items():
-                    with open(self.output_folder / f'{self.match_checking_file_name_prefix}_{field_name}.txt', 'w', encoding='utf-8') as f:
-                        f.write('\n'.join(missing))
+                    for field_name, missing in check_match_data.items():
+                        with open(self.output_folder / f'{self.match_checking_file_name_prefix}_{field_name}.txt', 'w', encoding='utf-8') as f:
+                            f.write('\n'.join(missing))
+
+                    self.exitcode = 1
 
                 self.logger.info('Match checking finished')
 
@@ -198,6 +212,139 @@ class Command(PandasCommand):
                         lambda x: '; '.join([str(y) for y in x.values if not re.match(r'nan|[.!?]+', str(y))]), axis='columns')
 
                 self.logger.info('Added detailed cancel fields')
+
+        if self.substances_enabled:
+            self.logger.info('Start substance matching')
+            substance_inn = data.loc[data['substance_inn'].notna(), [
+                'substance_inn']]
+            substance_inn = substance_inn.drop_duplicates().assign(cleaned_inn=substance_inn['substance_inn'].str.split(
+                '; ')).explode('cleaned_inn')
+            substance_inn['cleaned_inn'] = substance_inn['cleaned_inn'].str.strip(
+            ).str.replace(r'\s+\(\S+\)$', '', regex=True)
+            substance_inn.drop_duplicates().reset_index(drop=True)
+
+            substance_atc = data.loc[data['substance_atc'].notna(), [
+                'substance_atc']]
+            substance_atc = substance_atc.drop_duplicates().assign(cleaned_atc=substance_atc['substance_atc'].str.split(
+                '; ')).explode('cleaned_atc')
+            substance_atc['cleaned_atc'] = substance_atc['cleaned_atc'].str.strip(
+            ).str.replace(r'\s+\(.+\)$', '', regex=True)
+            substance_atc.drop_duplicates().reset_index(drop=True)
+
+            self.logger.info('\tAquiring KEGG data...')
+            kegg = self.pd.DataFrame()
+            kegg_db_path = self.output_folder / 'kegg.txt'
+            if kegg_db_path.is_file():
+                kegg = self.pd.DataFrame(
+                    [row.split('\t') for row in kegg_db_path.read_text().split('\n')[:-1]], columns=['kegg_drug_entry_id', 'all_kegg_drug_names'])
+            else:
+                response = requests.get('https://rest.kegg.jp/list/drug')
+                if response.ok:
+                    kegg_db_path.write_text(response.text)
+                    kegg = self.pd.DataFrame([row.split('\t') for row in response.text.split('\n')[
+                                             :-1]], columns=['kegg_drug_entry_id', 'all_kegg_drug_names'])
+                else:
+                    raise RuntimeError('KEGG rest api not responding ok.')
+
+            kegg = kegg.assign(cleaned_kegg_drug_name=kegg['all_kegg_drug_names'].str.split(
+                '; ')).explode('cleaned_kegg_drug_name')
+            kegg['cleaned_kegg_drug_name'] = kegg['cleaned_kegg_drug_name'].str.strip(
+            ).str.replace(r'\s+\(\S+\)$', '', regex=True)
+            kegg = kegg.drop_duplicates().reset_index(drop=True)
+            # self.write_output(kegg, '_kegg')
+
+            self.logger.info('\tMatching INN to KEGG...')
+            matching_rows = self.pd.DataFrame()
+            for search_term in substance_inn['cleaned_inn'].dropna().unique():
+                info = 'No match'
+                match = self.pd.DataFrame(
+                    [[self.pd.NA] * len(kegg.columns)], columns=kegg.columns.values)
+
+                exact_matches = kegg[kegg['cleaned_kegg_drug_name'].str.fullmatch(
+                    re.escape(search_term), case=False, na=False)]
+
+                if exact_matches.empty:
+                    matches = kegg[kegg['cleaned_kegg_drug_name'].str.match(
+                        re.escape(search_term), case=False, na=False)]
+
+                    if matches.empty:
+                        # print('no match', search_term)
+                        best_match = difflib.get_close_matches(
+                            search_term.lower(), kegg['cleaned_kegg_drug_name'], n=1, cutoff=0.6)
+                        if best_match:
+                            info = 'Best close match with cutoff 0.6'
+                            match = kegg[kegg['cleaned_kegg_drug_name'].str.fullmatch(
+                                re.escape(best_match[0]))].iloc[[0]]
+                    else:
+                        info = 'Best partial match'
+                        best_match = difflib.get_close_matches(
+                            search_term, matches['cleaned_kegg_drug_name'], n=1, cutoff=0)
+                        match = matches[matches['cleaned_kegg_drug_name'].str.fullmatch(
+                            re.escape(best_match[0]))].iloc[[0]]
+                else:
+                    info = 'Full match'
+                    match = exact_matches.iloc[[0]]
+
+                matching_rows = self.pd.concat(
+                    [matching_rows, match.assign(cleaned_inn=search_term, info=info)], ignore_index=True)
+
+            matching_rows.reset_index(drop=True, inplace=True)
+
+            self.logger.info('\tAquiring matched INN details from KEGG...')
+            kegg_details_path = self.output_folder / 'kegg_details.csv'
+            kegg_drug_ids_to_match = set(
+                matching_rows['kegg_drug_entry_id'].dropna().unique().tolist())
+            if kegg_details_path.is_file():
+                kegg_details = self.pd.read_csv(
+                    kegg_details_path.as_posix()).drop_duplicates()
+
+                kegg_drug_ids_to_match -= set(
+                    kegg_details['kegg_drug_entry_id'].dropna().unique().tolist())
+
+            if kegg_drug_ids_to_match:
+                opts.spargs = {
+                    'drug_ids': list(kegg_drug_ids_to_match),
+                    'progress_logging': True
+                }
+                feeds = {kegg_details_path.as_posix(): {
+                    'format': 'csv',
+                    'overwrite': False,
+                }}
+                self.settings.set("FEEDS", feeds, priority="cmdline")
+                CrawlCommand.run(self, [KEGG_Drug_Spider.name], opts)
+                kegg_details = self.pd.read_csv(
+                    kegg_details_path.as_posix()).drop_duplicates()
+
+            self.logger.info('\tMerging INN data...')
+            matching_rows = self.pd.merge(left=matching_rows, right=kegg_details,
+                                          on='kegg_drug_entry_id', how='left')
+            substance_inn = self.pd.merge(left=substance_inn, right=matching_rows,
+                                          on='cleaned_inn', how='left')
+
+            self.logger.info('\tAquiring ATC data...')
+            atc_details_path = self.output_folder / 'atc_details.csv'
+            if not atc_details_path.is_file():
+                opts.spargs = {
+                    'progress_logging': True
+                }
+                feeds = {atc_details_path.as_posix(): {
+                    'format': 'csv',
+                    'overwrite': True,
+                }}
+                self.settings.set("FEEDS", feeds, priority="cmdline")
+                CrawlCommand.run(self, [ATC_Spider.name], opts)
+
+            atc_details = self.pd.read_csv(
+                atc_details_path.as_posix()).drop_duplicates()
+
+            self.logger.info('\tMerging ATC data...')
+            substance_atc = self.pd.merge(left=substance_atc, right=atc_details,
+                                          left_on='cleaned_atc', right_on='atc_code', how='left')
+
+            self.logger.info('\tWriting substance data...')
+            self.write_output(substance_inn, '_substance_inn')
+            self.write_output(substance_atc, '_substance_atc')
+            self.logger.info('Substance matching finished')
 
         self.logger.info('Writing output data...')
         self.write_output(data, '_patched')

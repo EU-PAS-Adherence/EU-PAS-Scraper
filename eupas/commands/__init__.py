@@ -7,6 +7,7 @@ from scrapy.exceptions import UsageError
 class PandasCommand(ScrapyCommand):
 
     requires_project = True
+    # NOTE: Some of the default na_values listed below, have to be disabled in order to get correct data
     na_values = [
         "",
         "#N/A",

@@ -34,14 +34,12 @@ class Command(PandasCommand):
     def preprocess(self, data):
         import numpy as np
 
-        # NOTE: Pandas reads the boolean column with NA Values as float
+        # NOTE: Pandas reads boolean columns with NA Values as float
         # We need to fill na first because NA is True else
         data['$CANCELLED'] = data['$CANCELLED'].fillna(False).astype(bool)
         self.logger.info(
             f'Excluding {data["$CANCELLED"].astype(int).sum()} cancelled studies...')
         data = data.loc[~data['$CANCELLED']]
-
-        # data['scopes'].str.get_dummies('; ').sum().to_excel('scopes.xlsx')
 
         self.logger.info('Adding Dummies')
         for field in self.str_dummy_fields:
@@ -172,6 +170,9 @@ class Command(PandasCommand):
 
         funded_by, multiple_funding_sources = get_funding_sources()
 
+        planned_duration = df.loc[df['final_study_date_planed'].notna()
+                                  & df['data_collection_date_planed'].notna(), ['data_collection_date_planed', 'final_study_date_planed']].diff(axis='columns').iloc[:, -1]
+
         categories = categories.assign(
             registration_date=df['registration_date'].dt.year,
             study_type=df['study_type'].str.split(r'; |: ').str[0],
@@ -195,6 +196,7 @@ class Command(PandasCommand):
                 lambda sources: '; '.join(sorted(list({x if x in data_source_list else 'Other' for x in sources})))),
             study_design=df['study_design'].apply(
                 lambda designs: '; '.join(sorted(list({x if x in study_design_list else 'Other' for x in designs})))),
+            planned_duration=planned_duration
         )
 
         return categories.sort_index(axis=1)
@@ -258,12 +260,17 @@ class Command(PandasCommand):
         super().run(args, opts)
 
         self.logger = logging.getLogger()
-        self.logger.info('Start stats')
+        self.logger.info('Starting statistic script')
+        self.logger.info(f'Pandas {self.pd.__version__}')
         self.logger.info('Reading input data...')
         data = self.preprocess(self.read_input())
+
+        self.logger.info('Generating categories...')
         categories = self.create_categories(data)
+        self.logger.info('Generating grouped aggregations...')
         grouped_agg = self.create_grouped_agg(data)
 
+        self.logger.info('Generating and writing plots...')
         import matplotlib as mpl
         import matplotlib.pyplot as plt
         mpl.style.use('bmh')

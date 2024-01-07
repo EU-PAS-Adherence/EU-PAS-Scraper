@@ -20,6 +20,7 @@ def serialize_date(x: str) -> dt:
     return dt.strptime(x, '%d/%m/%Y').date()
 
 
+# TODO: Simply drop empty values?
 def serialize_encepp_document_url(x: str, empty_url_name: str = 'Empty Url') -> str:
     if not x:
         return empty_url_name

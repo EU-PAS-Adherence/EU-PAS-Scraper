@@ -26,7 +26,9 @@ class ItemHistoryComparer:
     duplicate_fields_key = '$DUPLICATE_SEARCH_ENTRY'
     only_excepted_fields_key = '$ONLY_EXCEPTED_FIELDS_CHANGED'
 
-    # There is currently only one study with duplicate entries with two different titles
+    # There is currently only one study with duplicate entries with two different titles in the search results
+    # The Dupefilter will drop one of these entries, but the chosen entry varies with each run
+    # TODO: Can be fixed and avoided by extracting the status, eu_pas_register_number, title and update_date from the details page
     # The other fields could also be affected, but not at this moment
     # CAVE: Don't add other fields to this set if they aren't shown in the search results
     duplicate_allowed_changed_fields = {
