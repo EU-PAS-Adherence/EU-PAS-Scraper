@@ -38,11 +38,13 @@ class ItemHistoryComparer:
         # 'update_date',
     }
 
-    # Updates without date changes are excepted in these fields. These fields are linked to
+    # NOTE: Updates without date changes are excepted in these fields. These fields are linked to
     # other sites which can be updated independently.
+    # NOTE: other_documents_url can be changed with empty urls witout date changes too
     excepted_fields = {
         'centre_name_of_investigator',
-        'data_sources_registered_with_encepp'
+        'data_sources_registered_with_encepp',
+        'other_documents_url'
     }
 
     # NOTE: If the meta field pipeline is used: all meta field names get ignored

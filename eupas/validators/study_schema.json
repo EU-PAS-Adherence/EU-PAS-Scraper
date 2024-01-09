@@ -92,7 +92,7 @@
         "title": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 1000
+            "maxLength": 500
         },
         "update_date": {
             "type": "string",
@@ -113,7 +113,7 @@
         "acronym": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 50
         },
         "study_type": {
             "type": "string",
@@ -135,7 +135,8 @@
         },
         "description": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 2000
         },
         "requested_by_regulator": {
             "type": "string",
@@ -163,15 +164,18 @@
         },
         "regulatory_procedure_number": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 400
         },
         "centre_name": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 250
         },
         "centre_location": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 250
         },
         "centre_name_of_investigator": {
             "type": "string",
@@ -179,7 +183,8 @@
         },
         "centre_organisation": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 150
         },
         "collaboration_with_research_network": {
             "type": "string",
@@ -199,7 +204,8 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 4,
+                "maxLength": 44
             },
             "minItems": 1,
             "uniqueItems": true
@@ -266,7 +272,8 @@
         },
         "funding_companies_names": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 250
         },
         "funding_companies_percentage": {
             "type": "number",
@@ -275,7 +282,8 @@
         },
         "funding_charities_names": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 250
         },
         "funding_charities_percentage": {
             "type": "number",
@@ -284,7 +292,8 @@
         },
         "funding_government_body_names": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 250
         },
         "funding_government_body_percentage": {
             "type": "number",
@@ -293,7 +302,8 @@
         },
         "funding_research_councils_names": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 250
         },
         "funding_research_councils_percentage": {
             "type": "number",
@@ -302,7 +312,8 @@
         },
         "funding_eu_scheme_names": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 250
         },
         "funding_eu_scheme_percentage": {
             "type": "number",
@@ -312,7 +323,9 @@
         "funding_other_names": {
             "type": "array",
             "items": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 250
             },
             "minItems": 1,
             "uniqueItems": true
@@ -368,12 +381,12 @@
                     "items": false
                 }
             ],
-            "minItems": 1,
-            "$comment": "uniqueItems is not possible, because 2 out of 2535 have duplicate fields"
+            "minItems": 1
         },
         "additional_medical_conditions": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 400
         },
         "age_population": {
             "type": "array",
@@ -423,7 +436,7 @@
         "number_of_subjects": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 1000000000
+            "maximum": 99999999
         },
         "uses_established_data_source": {
             "type": "string",
@@ -436,7 +449,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "minItems": 1
+                "minLength": 1
             },
             "minItems": 1,
             "uniqueItems": true
@@ -445,7 +458,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "minItems": 1
+                "minLength": 1
             },
             "minItems": 1,
             "uniqueItems": true
@@ -454,7 +467,8 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "minItems": 1
+                "minLength": 1,
+                "maxLength": 400
             },
             "minItems": 1,
             "uniqueItems": true
@@ -463,14 +477,15 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "minItems": 1
+                "minLength": 1
             },
             "minItems": 1,
             "uniqueItems": true
         },
         "primary_scope": {
             "type": "string",
-            "pattern": "^Primary scope : "
+            "pattern": "^Primary scope : ",
+            "maxLength": 266
         },
         "primary_outcomes": {
             "type": "array",
@@ -483,7 +498,8 @@
                     ],
                     "items": {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "maxLength": 400
                     }
                 },
                 {
@@ -510,7 +526,8 @@
                     ],
                     "items": {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "maxLength": 400
                     }
                 },
                 {
@@ -530,7 +547,8 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "minItems": 1
+                "minLength": 1,
+                "maxLength": 250
             },
             "minItems": 1,
             "uniqueItems": true
@@ -578,8 +596,7 @@
                 "type": "string",
                 "pattern": "^(http|https)://"
             },
-            "minItems": 1,
-            "$comment": "uniqueItems is not possible, because 12 out of 2535 have duplicate fields"
+            "minItems": 1
         },
         "other_documents_url": {
             "type": "array",

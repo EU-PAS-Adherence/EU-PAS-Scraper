@@ -24,7 +24,7 @@ class ATC_Spider(spiders.Spider):
         'ITEM_PIPELINES': set(),
         'SPIDERMON_ENABLED': False,
         'ITEMHISTORYCOMPARER_ENABLED': False,
-        'DEPTH_LIMIT': 3
+        'DEPTH_LIMIT': 4  # NOTE: Can be used to only extract atc codes up to a certain length
     }
     # These are the allowed domains. This spider should only follow urls in these domains
     allowed_domains = ['www.whocc.no']
@@ -55,22 +55,19 @@ class ATC_Spider(spiders.Spider):
         return spider
 
     def start_requests(self):
-        return [
-            http.Request(self.query_url.format(x), dont_filter=True) for x in 'ABCDGHJLMNPRSV'
-        ]
+        return [http.Request(self.base_url, cb_kwargs={'base_url_page': True})]
 
     start_print = False
 
-    def parse(self, response: http.Response):
+    def parse(self, response: http.Response, base_url_page=False):
         if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):
             self.pbar.update()
 
         main = response.xpath('//*[@id="content"]')
+        if base_url_page:
+            main = main.xpath('./div/div')
         atc_links = main.xpath('./p/b//a')
         follow_links = True
-
-        # //*[@id="content"]/p/b/a
-        # //*[@id="content"]//table//a
 
         if not atc_links:
             atc_links = main.xpath('.//table//a')

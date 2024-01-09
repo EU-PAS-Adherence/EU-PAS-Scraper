@@ -119,6 +119,7 @@ class Command(PandasCommand):
 
     def run(self, args, opts):
         super().run(args, opts)
+        import numpy as np
 
         if len(args) == 0:
             raise UsageError(
@@ -225,9 +226,11 @@ class Command(PandasCommand):
 
             substance_atc = data.loc[data['substance_atc'].notna(), [
                 'substance_atc']]
-            substance_atc = substance_atc.drop_duplicates().assign(cleaned_atc=substance_atc['substance_atc'].str.split(
-                '; ')).explode('cleaned_atc')
-            substance_atc['cleaned_atc'] = substance_atc['cleaned_atc'].str.strip(
+            substance_atc = substance_atc.drop_duplicates().assign(cleaned_atc_code=substance_atc['substance_atc'].str.split(
+                '; ')).explode('cleaned_atc_code')
+            substance_atc = substance_atc.assign(cleaned_atc_value=substance_atc['cleaned_atc_code'].str.strip(
+            ).str.replace(r'\S+\b\s*\((.*)\)$', r'\1', regex=True))
+            substance_atc['cleaned_atc_code'] = substance_atc['cleaned_atc_code'].str.strip(
             ).str.replace(r'\s+\(.+\)$', '', regex=True)
             substance_atc.drop_duplicates().reset_index(drop=True)
 
@@ -254,41 +257,45 @@ class Command(PandasCommand):
             # self.write_output(kegg, '_kegg')
 
             self.logger.info('\tMatching INN to KEGG...')
-            matching_rows = self.pd.DataFrame()
-            for search_term in substance_inn['cleaned_inn'].dropna().unique():
-                info = 'No match'
-                match = self.pd.DataFrame(
-                    [[self.pd.NA] * len(kegg.columns)], columns=kegg.columns.values)
 
-                exact_matches = kegg[kegg['cleaned_kegg_drug_name'].str.fullmatch(
-                    re.escape(search_term), case=False, na=False)]
+            def get_matching_rows(search_terms, df, column, assigned_column, prefix=''):
+                matching_rows = self.pd.DataFrame()
+                for search_term in search_terms:
+                    info = f'{prefix}No match'
+                    match = self.pd.DataFrame(
+                        [[self.pd.NA] * len(df.columns)], columns=df.columns.values)
 
-                if exact_matches.empty:
-                    matches = kegg[kegg['cleaned_kegg_drug_name'].str.match(
+                    exact_matches = df[df[column].str.fullmatch(
                         re.escape(search_term), case=False, na=False)]
 
-                    if matches.empty:
-                        # print('no match', search_term)
-                        best_match = difflib.get_close_matches(
-                            search_term.lower(), kegg['cleaned_kegg_drug_name'], n=1, cutoff=0.6)
-                        if best_match:
-                            info = 'Best close match with cutoff 0.6'
-                            match = kegg[kegg['cleaned_kegg_drug_name'].str.fullmatch(
+                    if exact_matches.empty:
+                        matches = df[df[column].str.match(
+                            re.escape(search_term), case=False, na=False)]
+
+                        if matches.empty:
+                            best_match = difflib.get_close_matches(
+                                search_term.lower(), df[column], n=1, cutoff=0.6)
+                            if best_match:
+                                info = f'{prefix}Best close match with cutoff 0.6'
+                                match = df[df[column].str.fullmatch(
+                                    re.escape(best_match[0]))].iloc[[0]]
+                        else:
+                            info = f'{prefix}Best partial match'
+                            best_match = difflib.get_close_matches(
+                                search_term, matches[column], n=1, cutoff=0)
+                            match = matches[matches[column].str.fullmatch(
                                 re.escape(best_match[0]))].iloc[[0]]
                     else:
-                        info = 'Best partial match'
-                        best_match = difflib.get_close_matches(
-                            search_term, matches['cleaned_kegg_drug_name'], n=1, cutoff=0)
-                        match = matches[matches['cleaned_kegg_drug_name'].str.fullmatch(
-                            re.escape(best_match[0]))].iloc[[0]]
-                else:
-                    info = 'Full match'
-                    match = exact_matches.iloc[[0]]
+                        info = f'{prefix}Full match'
+                        match = exact_matches.iloc[[0]]
 
-                matching_rows = self.pd.concat(
-                    [matching_rows, match.assign(cleaned_inn=search_term, info=info)], ignore_index=True)
+                    matching_rows = self.pd.concat([matching_rows, match.assign(
+                        **{assigned_column: search_term, 'info': info})], ignore_index=True)
 
-            matching_rows.reset_index(drop=True, inplace=True)
+                return matching_rows.reset_index(drop=True)
+
+            matching_rows = get_matching_rows(substance_inn['cleaned_inn'].dropna(
+            ).unique(), kegg, 'cleaned_kegg_drug_name', 'cleaned_inn')
 
             self.logger.info('\tAquiring matched INN details from KEGG...')
             kegg_details_path = self.output_folder / 'kegg_details.csv'
@@ -316,10 +323,10 @@ class Command(PandasCommand):
                     kegg_details_path.as_posix()).drop_duplicates()
 
             self.logger.info('\tMerging INN data...')
-            matching_rows = self.pd.merge(left=matching_rows, right=kegg_details,
-                                          on='kegg_drug_entry_id', how='left')
-            substance_inn = self.pd.merge(left=substance_inn, right=matching_rows,
-                                          on='cleaned_inn', how='left')
+            matching_rows = matching_rows.merge(
+                right=kegg_details, on='kegg_drug_entry_id', how='left')
+            substance_inn = substance_inn.merge(
+                right=matching_rows, on='cleaned_inn', how='left')
 
             self.logger.info('\tAquiring ATC data...')
             atc_details_path = self.output_folder / 'atc_details.csv'
@@ -334,12 +341,29 @@ class Command(PandasCommand):
                 self.settings.set("FEEDS", feeds, priority="cmdline")
                 CrawlCommand.run(self, [ATC_Spider.name], opts)
 
-            atc_details = self.pd.read_csv(
+            who_atc = self.pd.read_csv(
                 atc_details_path.as_posix()).drop_duplicates()
 
             self.logger.info('\tMerging ATC data...')
-            substance_atc = self.pd.merge(left=substance_atc, right=atc_details,
-                                          left_on='cleaned_atc', right_on='atc_code', how='left')
+            substance_atc = substance_atc.merge(
+                right=who_atc, left_on='cleaned_atc_code', right_on='atc_code', how='left')
+
+            self.logger.info('\tFill missing ATC data...')
+            substance_atc = substance_atc.assign(info=np.where(
+                substance_atc['atc_code'].notna(), 'Full match', self.pd.NA))
+
+            matching_rows = get_matching_rows(substance_atc.loc[substance_atc['atc_code'].isna(
+            ), 'cleaned_atc_value'].unique(), who_atc, 'atc_value', 'cleaned_atc_value', 'ATC Value: ')
+
+            self.logger.info('\tMerging ATC data...')
+            merge_suffix = '_merge'
+            substance_atc = substance_atc.merge(
+                right=matching_rows, on='cleaned_atc_value', how='left', suffixes=(None, merge_suffix))
+            override_columns = ['atc_code', 'atc_value', 'info']
+            substance_atc.loc[substance_atc['atc_code'].isna(), override_columns] = substance_atc.loc[substance_atc['atc_code'].isna(
+            ), [f'{column}{merge_suffix}' for column in override_columns]].rename(lambda x: x.removesuffix(merge_suffix), axis='columns')
+            substance_atc.drop(
+                columns=[f'{column}{merge_suffix}' for column in override_columns], inplace=True)
 
             self.logger.info('\tWriting substance data...')
             self.write_output(substance_inn, '_substance_inn')
