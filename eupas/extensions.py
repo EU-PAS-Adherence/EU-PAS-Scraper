@@ -101,43 +101,47 @@ class ItemHistoryComparer:
         elif len(old_studies) > 1:
             raise NotSupported
 
+        old_study = old_studies[0]
+
         duplicate = self.crawler.stats.get_value(
             f'dupefilter/filtered/search_entries/eupas_{new_study["eu_pas_register_number"]}', 0) > 0
 
-        old_study = old_studies[0]
         difference = frozenset(self.tuplify(new_study)) - \
             frozenset(self.tuplify(old_study))
-        deleted = list(frozenset(old_study.keys()) -
-                       frozenset(new_study.keys()))
-        updates_dict = dict(difference)
+        updated_fields = {d[0] for d in difference}
+        deleted_fields = list(frozenset(old_study.keys()) -
+                              frozenset(new_study.keys()))
+
+        changes_dict = dict(difference)
         only_excepted_fields = False
 
-        if difference or deleted:
-            if 'update_date' in updates_dict:
+        if updated_fields or deleted_fields:
+            if 'update_date' in changes_dict:
                 self.crawler.stats.inc_value(
                     'item_history_comparer/updated_item_with_changed_date_count')
-                updates_dict.setdefault(self.changed_date_key, True)
-            elif 'update_date' in deleted:
+                changes_dict.setdefault(self.changed_date_key, True)
+            elif 'update_date' in deleted_fields:
                 self.crawler.stats.inc_value(
                     'item_history_comparer/updated_item_with_deleted_date_count')
-                updates_dict.setdefault(self.changed_date_key, None)
+                changes_dict.setdefault(self.changed_date_key, None)
             else:
                 self.crawler.stats.inc_value(
                     'item_history_comparer/updated_item_without_changed_date_count')
-                if {d[0] for d in difference}.union(set(difference)).issubset(self.excepted_fields):
+                if updated_fields.union(set(deleted_fields)).issubset(self.excepted_fields):
                     only_excepted_fields = True
                     self.crawler.stats.inc_value(
                         'item_history_comparer/updated_item_without_changed_date_count/only_excepted_fields')
-                if duplicate and {d[0] for d in difference}.issubset(self.duplicate_allowed_changed_fields):
+                if duplicate and updated_fields.issubset(self.duplicate_allowed_changed_fields):
                     self.crawler.stats.inc_value(
                         'item_history_comparer/updated_item_without_changed_date_count/duplicate_related')
-                updates_dict.setdefault(self.changed_date_key, False)
+                changes_dict.setdefault(self.changed_date_key, False)
 
-            updates_dict.setdefault(
+            changes_dict.setdefault(
                 self.only_excepted_fields_key, only_excepted_fields)
-            updates_dict.setdefault(self.duplicate_fields_key, duplicate)
-            updates_dict.setdefault(
+            changes_dict.setdefault(self.duplicate_fields_key, duplicate)
+            changes_dict.setdefault(
                 self.changed_eupas_key, new_study["eu_pas_register_number"])
-            updates_dict.setdefault(self.changed_url_key, new_study["url"])
-            updates_dict.setdefault(self.deleted_fields_key, deleted or None)
-            self.updates.append(updates_dict)
+            changes_dict.setdefault(self.changed_url_key, new_study["url"])
+            changes_dict.setdefault(
+                self.deleted_fields_key, deleted_fields or None)
+            self.updates.append(changes_dict)

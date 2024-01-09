@@ -377,8 +377,9 @@ class EU_PAS_Spider(spiders.Spider):
         # https://www.encepp.eu/encepp/viewResource.htm;?id=49962
         # https://www.encepp.eu/encepp/viewResource.htm;?id=47071
         if block[-1].xpath('./span[1]').re_first('Additional Medical Condition'):
-            study['additional_medical_conditions'] = block[-1].xpath(
-                './span[2]//text()[normalize-space()]').get()
+            # TODO: Check other fields for '\r\n' in other fields too
+            study['additional_medical_conditions'] = '\n'.join(
+                block[-1].xpath('./span[2]//text()[normalize-space()]').get().splitlines())
 
         # Third Block: Population under study
         # NOTE: WHENEVER MAP IS USED => Map object has to be turned into list for json and jsonschema to work
