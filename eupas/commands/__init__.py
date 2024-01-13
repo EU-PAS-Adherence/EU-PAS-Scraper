@@ -100,9 +100,7 @@ class PandasCommand(ScrapyCommand):
         elif output_path.suffix == '.xlsx':
             data.rename(
                 columns=lambda x: ' '.join(
-                    [word.capitalize() for word in x.split('_')]) if x[0] != '$' else x,
-                inplace=True
-            )
-            data.to_excel(output_path, sheet_name='PAS')
+                    [word.capitalize() for word in x.split('_')]) if x[0] != '$' else x
+            ).to_excel(output_path, sheet_name='PAS')
         elif output_path.suffix == '.xml':
             data.to_xml(output_path)

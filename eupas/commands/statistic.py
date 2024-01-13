@@ -5,7 +5,7 @@ from eupas.commands import PandasCommand
 
 class Command(PandasCommand):
 
-    group_by_field_name = '$MATCHED_combined_name'
+    group_by_field_name = '$MATCHED_combined_centre_name'
 
     str_dummy_fields = ['age_population', 'other_population']
     dummy_fields = ['$UPDATED_state', 'risk_management_plan']
