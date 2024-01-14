@@ -25,7 +25,14 @@ class Command(PandasCommand):
             "--match-input",
             metavar="FILE",
             default=None,
-            help="path to the matching file"
+            help="path to the manual matching file"
+        )
+        patch.add_argument(
+            "-c",
+            "--cutoff",
+            metavar="CUTOFF",
+            default=0.6,
+            help="cutoff value for close matches"
         )
 
     def process_options(self, args, opts):
@@ -40,6 +47,12 @@ class Command(PandasCommand):
             if self.match_path.suffix != '.xlsx' and self.match_enabled:
                 raise UsageError(
                     "Invalid -m value, xlsx file expected", print_help=False)
+        try:
+            self.cutoff = float(opts.cutoff)
+            assert self.cutoff >= 0 and self.cutoff <= 1
+        except (ValueError, AssertionError) as e:
+            raise UsageError(
+                "Invalid -c value, use a valid float between 0 and 1", print_help=False) from e
 
     def syntax(self):
         return "[options]"
@@ -70,7 +83,7 @@ class Command(PandasCommand):
         substance_atc = substance_atc.drop_duplicates().assign(
             cleaned_atc_code=substance_atc['substance_atc'].str.split('; ')).explode('cleaned_atc_code')
         substance_atc = substance_atc.assign(cleaned_atc_value=substance_atc['cleaned_atc_code'].str.strip(
-        ).str.replace(r'\S+\b\s*\((.*)\)$', r'\1', regex=True))
+        ).str.replace(r'.+?\s+\((.+)\)$', r'\1', regex=True))
         substance_atc['cleaned_atc_code'] = substance_atc['cleaned_atc_code'].str.strip(
         ).str.replace(r'\s+\(.+\)$', '', regex=True)
         substance_atc.drop_duplicates().reset_index(drop=True)
@@ -117,9 +130,9 @@ class Command(PandasCommand):
 
                     if matches.empty:
                         best_match = difflib.get_close_matches(
-                            search_term.lower(), df[column], n=1, cutoff=0.6)
+                            search_term.lower(), df[column], n=1, cutoff=self.cutoff)
                         if best_match:
-                            info = f'{prefix}Best close match with cutoff 0.6'
+                            info = f'{prefix}Best close match with cutoff {self.cutoff}'
                             close_matches = df[df[column].str.fullmatch(
                                 re.escape(best_match[0]))]
                             match = filter_matches(close_matches)
@@ -150,7 +163,7 @@ class Command(PandasCommand):
             else:
                 return matches.iloc[[0]]
 
-        prefix = 'ATC Code: '
+        prefix = 'INN: '
         matching_rows = get_matching_rows(
             search_terms=substance_inn['cleaned_inn'].dropna().unique(),
             df=kegg,
@@ -212,6 +225,7 @@ class Command(PandasCommand):
             right=who_atc, left_on='cleaned_atc_code', right_on='atc_code', how='left')
 
         self.logger.info('Fill missing ATC data...')
+        prefix = 'ATC Code: '
         substance_atc = substance_atc.assign(info=np.where(
             substance_atc['atc_code'].notna(), f'{prefix}Full match', self.pd.NA))
 
