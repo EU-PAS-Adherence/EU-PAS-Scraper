@@ -1,6 +1,8 @@
+from datetime import datetime
 import logging
 
 from eupas.commands import PandasCommand
+from scrapy.exceptions import UsageError
 
 
 class Command(PandasCommand):
@@ -25,11 +27,40 @@ class Command(PandasCommand):
                          'funding_government_body_percentage', 'funding_research_councils_percentage',
                          'funding_eu_scheme_percentage']
 
+    multiple_categories_fields = ['age_population', 'data_source_types',
+                                  'funded_by', 'other_population', 'scopes', 'sex_population', 'study_design']
+
+    compare_datetime = None
+
     def syntax(self):
         return "[options]"
 
     def short_desc(self):
         return "Runs statistics with input file data."
+
+    def add_options(self, parser):
+        PandasCommand.add_options(self, parser)
+        statistics = parser.add_argument_group(title="Custom Eupas Options")
+        statistics.add_argument(
+            "-D",
+            "--date",
+            metavar="COMPARE_DATE",
+            default=None,
+            help="specifies the date to compare against",
+        )
+
+    def process_options(self, args, opts):
+        PandasCommand.process_options(self, args, opts)
+        import numpy as np
+        if opts.date:
+            try:
+                self.compare_datetime = np.datetime64(
+                    opts.date, 'm')
+            except ValueError:
+                raise UsageError(
+                    'The date was not formatted correctly like this')
+        else:
+            self.compare_datetime = np.datetime64(datetime.utcnow(), 'm')
 
     def preprocess(self, data):
         import numpy as np
@@ -166,26 +197,40 @@ class Command(PandasCommand):
             'state', 'risk_management_plan', 'follow_up',
             'requested_by_regulator', 'collaboration_with_research_network',
             'country_type', 'medical_conditions', 'uses_established_data_source',
-            'primary_outcomes', 'secondary_outcomes', 'number_of_subjects']]
+            'primary_outcomes', 'secondary_outcomes', 'number_of_subjects',
+            'data_collection_date_actual', 'final_report_date_actual']]
 
         funded_by, multiple_funding_sources = get_funding_sources()
 
-        planned_duration = df.loc[df['final_study_date_planed'].notna()
-                                  & df['data_collection_date_planed'].notna(), ['data_collection_date_planed', 'final_study_date_planed']].diff(axis='columns').iloc[:, -1]
+        planned_duration = df.loc[df['final_report_date_planed'].notna()
+                                  & df['data_collection_date_planed'].notna(), ['data_collection_date_planed', 'final_report_date_planed']].diff(axis='columns').iloc[:, -1]
+
+        def get_quartiles(s, interpolation='linear'):
+            one_quart, median, three_quart = s.quantile(
+                [.25, .5, .75], interpolation=interpolation)
+            result = np.where(s <= one_quart, 1, 0) \
+                + np.where((s > one_quart) & (s <= median), 2, 0) \
+                + np.where((s > median) & (s <= three_quart), 3, 0) \
+                + np.where(s > three_quart, 4, 0)
+            return np.where(result == 0, self.pd.NA, result)
 
         categories = categories.assign(
             registration_date=df['registration_date'].dt.year,
             study_type=df['study_type'].str.split(r'; |: ').str[0],
-            countries=df['countries'].apply(len),
-            countries_grouped=df['countries'].apply(
+            number_of_countries=df['countries'].apply(len),
+            number_of_countries_grouped=df['countries'].apply(
                 lambda x: len(x) if len(x) < 3 else '3 or more'),
+            countries_quartiles=lambda x: get_quartiles(
+                x['number_of_countries']),
             number_of_subjects_grouped=df['number_of_subjects'].apply(
                 lambda x: '<1000' if x < 1000 else '>10000' if x > 10000 else '1000-10000'
             ),
+            number_of_subjects_quartiles=get_quartiles(
+                df['number_of_subjects']),
             age_population=df['age_population'].apply(
                 lambda ages: '; '.join(sorted(list({age_map[x] for x in ages})))),
             sex_population=df['sex_population'].apply(
-                lambda x: list(reversed(sorted(x)))).str.join(' and '),
+                lambda x: list(reversed(sorted(x)))).str.join('; '),
             other_population=df['other_population'].apply(
                 lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
             funded_by=funded_by,
@@ -196,7 +241,9 @@ class Command(PandasCommand):
                 lambda sources: '; '.join(sorted(list({x if x in data_source_list else 'Other' for x in sources})))),
             study_design=df['study_design'].apply(
                 lambda designs: '; '.join(sorted(list({x if x in study_design_list else 'Other' for x in designs})))),
-            planned_duration=planned_duration
+            planned_duration=planned_duration,
+            planned_duration_quartiles=lambda x: get_quartiles(
+                x['planned_duration'])
         )
 
         return categories.sort_index(axis=1)
@@ -271,6 +318,7 @@ class Command(PandasCommand):
         grouped_agg = self.create_grouped_agg(data)
 
         self.logger.info('Generating and writing plots...')
+        (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)
         import matplotlib as mpl
         import matplotlib.pyplot as plt
         mpl.style.use('bmh')
@@ -285,9 +333,51 @@ class Command(PandasCommand):
             ylabel='# of studies',
             subplots=True
         )
-        plt.savefig(self.output_folder / 'registration_date_freq.png')
+        plt.savefig(self.output_folder / 'plots' /
+                    'registration_date_freq.png')
+
+        for col in ['number_of_countries', 'number_of_subjects']:
+            plt.figure()
+            categories[col].plot(
+                kind='box', title=f'Boxplot of study categories by "{self.excel_name_converter(col)}"',)
+            plt.savefig(self.output_folder / 'plots' / f'{col}_boxplot.png')
+
+        plt.figure()
+        categories['planned_duration'].map(lambda x: x.days).plot(
+            kind='kde', title='Density of "Planned Duration"')
+        plt.savefig(self.output_folder / 'plots' /
+                    'planned_duration_density.png')
 
         self.logger.info('Writing output data...')
         self.write_output(data, '_statistics_preprocessed')
         self.write_output(categories, '_statistics_categories')
         self.write_output(grouped_agg, '_statistics_grouped_agg')
+
+        categories_past_data_collection = categories[categories['data_collection_date_actual'].notna(
+        ) & (categories['data_collection_date_actual'] <= self.compare_datetime)]
+
+        categories_past_final_report = categories[categories['final_report_date_actual'].notna(
+        ) & (categories['final_report_date_actual'] <= self.compare_datetime)]
+
+        for df, suffix in [(categories, '_all'), (categories_past_data_collection, '_past_date_collection'), (categories_past_final_report, '_past_final_report')]:
+            with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_described{suffix}.xlsx', engine='openpyxl') as writer:
+                df.to_excel(
+                    writer, sheet_name=f'categories{suffix}')
+                df.describe().to_excel(
+                    writer, sheet_name='numerical_descriptions')
+                for col in sorted(set(df.columns) - {'number_of_countries', 'number_of_subjects', 'planned_duration', 'registration_date'}):
+
+                    frequencies = df.loc[:, [col]].apply(lambda x: x.value_counts(
+                        normalize=True) * 100).rename(columns={col: 'percentage'}).reset_index()
+
+                    frequencies.to_excel(
+                        writer, sheet_name=f'{col}_frequencies'[:31], index=False)
+
+                    if col in self.multiple_categories_fields:
+                        overall_frequencies = frequencies.assign(split=lambda x: x[col].str.split(
+                            '; ')).explode('split').groupby('split')['percentage'].sum().reset_index().rename(columns={
+                                'split': col,
+                                'percentage': 'overall_percentage'})
+
+                        overall_frequencies.to_excel(
+                            writer, sheet_name=f'{col}_frequencies'[:31], index=False, startcol=3)

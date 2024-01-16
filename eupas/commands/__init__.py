@@ -89,18 +89,19 @@ class PandasCommand(ScrapyCommand):
 
         return input_data
 
-    def write_output(self, data, output_suffix='_pandas'):
+    def excel_name_converter(self, x):
+        return ' '.join([word.capitalize() for word in x.split('_')]) if x[0] != '$' else x
+
+    def write_output(self, data, output_suffix='_pandas', file_extension=None):
         output_path = self.output_folder / \
-            f'{self.input_path.stem}{output_suffix}{self.input_path.suffix}'
+            f'{self.input_path.stem}{output_suffix}{file_extension or self.input_path.suffix}'
         if output_path.suffix == '.csv':
             data.to_csv(output_path)
         elif output_path.suffix == '.json':
             data.to_json(
                 output_path, orient='records', force_ascii=False)
         elif output_path.suffix == '.xlsx':
-            data.rename(
-                columns=lambda x: ' '.join(
-                    [word.capitalize() for word in x.split('_')]) if x[0] != '$' else x
-            ).to_excel(output_path, sheet_name='PAS')
+            data.rename(columns=self.excel_name_converter).to_excel(
+                output_path, sheet_name='PAS')
         elif output_path.suffix == '.xml':
             data.to_xml(output_path)

@@ -73,19 +73,19 @@ class Command(PandasCommand):
         substance_inn = data.loc[data['substance_inn'].notna(), [
             'substance_inn']]
         substance_inn = substance_inn.drop_duplicates().assign(
-            cleaned_inn=substance_inn['substance_inn'].str.split('; ')).explode('cleaned_inn')
-        substance_inn['cleaned_inn'] = substance_inn['cleaned_inn'].str.strip(
-        ).str.replace(r'\s+\(\S+\)$', '', regex=True)
+            single_inn=substance_inn['substance_inn'].str.split('; ')).explode('single_inn')
+        substance_inn = substance_inn.assign(cleaned_inn=substance_inn['single_inn'].str.strip(
+        ).str.replace(r'\s?\([^\(\)]*\)', '', regex=True))
         substance_inn.drop_duplicates().reset_index(drop=True)
 
         substance_atc = data.loc[data['substance_atc'].notna(), [
             'substance_atc']]
         substance_atc = substance_atc.drop_duplicates().assign(
-            cleaned_atc_code=substance_atc['substance_atc'].str.split('; ')).explode('cleaned_atc_code')
-        substance_atc = substance_atc.assign(cleaned_atc_value=substance_atc['cleaned_atc_code'].str.strip(
+            single_atc=substance_atc['substance_atc'].str.split('; ')).explode('single_atc')
+        substance_atc = substance_atc.assign(cleaned_atc_code=substance_atc['single_atc'].str.strip(
+        ).str.replace(r'\s+\(.+\)$', '', regex=True))
+        substance_atc = substance_atc.assign(cleaned_atc_value=substance_atc['single_atc'].str.strip(
         ).str.replace(r'.+?\s+\((.+)\)$', r'\1', regex=True))
-        substance_atc['cleaned_atc_code'] = substance_atc['cleaned_atc_code'].str.strip(
-        ).str.replace(r'\s+\(.+\)$', '', regex=True)
         substance_atc.drop_duplicates().reset_index(drop=True)
 
         self.logger.info('Aquiring KEGG data...')
@@ -203,6 +203,8 @@ class Command(PandasCommand):
             right=kegg_details, on='kegg_drug_entry_id', how='left')
         substance_inn = substance_inn.merge(
             right=matching_rows, on='cleaned_inn', how='left')
+        substance_inn.loc[substance_inn['atc_code'].isna(),
+                          "info"] += "; ATC Code: No match"
 
         self.logger.info('Aquiring ATC data...')
         atc_details_path = self.output_folder / 'atc_details.csv'

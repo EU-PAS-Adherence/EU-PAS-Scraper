@@ -322,8 +322,8 @@ class EU_PAS_Spider(spiders.Spider):
             'data_analysis_date_actual',
             'iterim_report_date_planed',
             'iterim_report_date_actual',
-            'final_study_date_planed',
-            'final_study_date_actual'
+            'final_report_date_planed',
+            'final_report_date_actual'
         ])
 
         # Eight block: Sources of funding
