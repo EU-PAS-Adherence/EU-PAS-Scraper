@@ -1,3 +1,0 @@
-cleanco
-numpy
-scikit-learn

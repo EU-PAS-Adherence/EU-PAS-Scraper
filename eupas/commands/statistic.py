@@ -3,6 +3,7 @@ import logging
 
 from eupas.commands import PandasCommand
 from scrapy.exceptions import UsageError
+from statsmodels.stats.proportion import proportion_confint
 
 
 class Command(PandasCommand):
@@ -31,6 +32,9 @@ class Command(PandasCommand):
                                   'funded_by', 'other_population', 'scopes', 'sex_population', 'study_design']
 
     compare_datetime = None
+
+    required_rmp = ['EU RMP category 1 (imposed as condition of marketing authorisation)',
+                    'EU RMP category 2 (specific obligation of marketing authorisation)']
 
     def syntax(self):
         return "[options]"
@@ -243,7 +247,11 @@ class Command(PandasCommand):
                 lambda designs: '; '.join(sorted(list({x if x in study_design_list else 'Other' for x in designs})))),
             planned_duration=planned_duration,
             planned_duration_quartiles=lambda x: get_quartiles(
-                x['planned_duration'])
+                x['planned_duration']),
+            has_protocol=df['protocol_document_url'].notna(
+            ) | df['latest_protocol_document_url'].notna(),
+            has_result=df['result_document_url'].notna(
+            ) | df['latest_result_document_url'].notna()
         )
 
         return categories.sort_index(axis=1)
@@ -362,7 +370,7 @@ class Command(PandasCommand):
         for df, suffix in [(categories, '_all'), (categories_past_data_collection, '_past_date_collection'), (categories_past_final_report, '_past_final_report')]:
             with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_described{suffix}.xlsx', engine='openpyxl') as writer:
                 df.to_excel(
-                    writer, sheet_name=f'categories{suffix}')
+                    writer, sheet_name=f'categories{suffix}'[:31])
                 df.describe().to_excel(
                     writer, sheet_name='numerical_descriptions')
                 for col in sorted(set(df.columns) - {'number_of_countries', 'number_of_subjects', 'planned_duration', 'registration_date'}):
@@ -381,3 +389,42 @@ class Command(PandasCommand):
 
                         overall_frequencies.to_excel(
                             writer, sheet_name=f'{col}_frequencies'[:31], index=False, startcol=3)
+
+        import numpy as np
+        categories_two_weeks_past_final_report = categories[categories['final_report_date_actual'].notna(
+        ) & (categories['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D'))]
+
+        for df, suffix in [(categories, '_all'), (categories_past_data_collection, '_past_date_collection'), (categories_two_weeks_past_final_report, '_two_weeks_past_final_report')]:
+            with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_documents{suffix}.xlsx', engine='openpyxl') as writer:
+                df.to_excel(
+                    writer, sheet_name=f'categories{suffix}'[:31])
+
+                for col in ['has_protocol', 'has_result']:
+
+                    size_df = len(df.loc[:, [col]])
+                    frequencies = df.loc[:, [col]].apply(lambda x: x.value_counts()) \
+                        .rename(columns={col: 'absolute'}) \
+                        .assign(
+                            percentage=df.loc[:, [col]].apply(
+                                lambda x: x.value_counts(normalize=True) * 100),
+                            confidence_interval=lambda x: x['absolute'].apply(
+                                lambda y: [z * 100 for z in proportion_confint(y, size_df, alpha=0.05, method='normal')])
+                    ).reset_index()
+
+                    frequencies.to_excel(
+                        writer, sheet_name=col[:31], index=False)
+
+                    size_df = len(
+                        df.loc[df['risk_management_plan'].isin(self.required_rmp), [col]])
+                    required_rmp_frequencies = df.loc[df['risk_management_plan'].isin(
+                        self.required_rmp), [col]].apply(lambda x: x.value_counts()) \
+                        .rename(columns={col: 'absolute'}) \
+                        .assign(
+                            percentage=df.loc[:, [col]].apply(
+                                lambda x: x.value_counts(normalize=True) * 100),
+                            confidence_interval=lambda x: x['absolute'].apply(
+                                lambda y: [z * 100 for z in proportion_confint(y, size_df, alpha=0.05, method='normal')])
+                    ).reset_index().rename(columns={col: f'required_{col}'})
+
+                    required_rmp_frequencies.to_excel(
+                        writer, sheet_name=col[:31], index=False, startrow=4)
