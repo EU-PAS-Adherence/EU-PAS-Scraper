@@ -3,15 +3,12 @@ import logging
 
 from eupas.commands import PandasCommand
 from scrapy.exceptions import UsageError
-from statsmodels.stats.proportion import proportion_confint
 
 
 class Command(PandasCommand):
 
     group_by_field_name = '$MATCHED_combined_centre_name'
 
-    str_dummy_fields = ['age_population', 'other_population']
-    dummy_fields = ['$UPDATED_state', 'risk_management_plan']
     array_fields = [
         'age_population', 'countries', 'data_sources_registered_with_encepp',
         'data_sources_not_registered_with_encepp', 'data_source_types',
@@ -76,18 +73,7 @@ class Command(PandasCommand):
             f'Excluding {data["$CANCELLED"].astype(int).sum()} cancelled studies...')
         data = data.loc[~data['$CANCELLED']]
 
-        self.logger.info('Adding Dummies')
-        for field in self.str_dummy_fields:
-            field_dummies = data[field].str.get_dummies('; ').rename(
-                columns=lambda x: f'{field}:{x}')
-            data = PandasCommand.pd.concat([data, field_dummies], axis=1)
-
-        for field in self.dummy_fields:
-            field_dummies = PandasCommand.pd.get_dummies(
-                data[field], prefix=f'{field}:')
-            data = PandasCommand.pd.concat([data, field_dummies], axis=1)
-
-        self.logger.info('Converting strings to arrays')
+        self.logger.info('Splitting strings to arrays')
         for field in self.array_fields:
             data[field] = data[field].str.split('; ')
 
@@ -120,11 +106,12 @@ class Command(PandasCommand):
         data['funding_other_percentage'] = data['funding_other_percentage'].apply(
             lambda x: list(map(float, x)) if isinstance(x, list) else [0.0])
 
+        data = data.set_index('eu_pas_register_number')
+
         return data.sort_index(axis=1)
 
-    def create_categories(self, data):
+    def create_categories(self, df):
         import numpy as np
-        df = data.set_index('eu_pas_register_number')
 
         age_map = {
             'Preterm newborns': '<2 years',
@@ -202,7 +189,8 @@ class Command(PandasCommand):
             'requested_by_regulator', 'collaboration_with_research_network',
             'country_type', 'medical_conditions', 'uses_established_data_source',
             'primary_outcomes', 'secondary_outcomes', 'number_of_subjects',
-            'data_collection_date_actual', 'final_report_date_actual']]
+            'data_collection_date_actual', 'final_report_date_actual',
+            'has_protocol', 'has_result']]
 
         funded_by, multiple_funding_sources = get_funding_sources()
 
@@ -247,11 +235,7 @@ class Command(PandasCommand):
                 lambda designs: '; '.join(sorted(list({x if x in study_design_list else 'Other' for x in designs})))),
             planned_duration=planned_duration,
             planned_duration_quartiles=lambda x: get_quartiles(
-                x['planned_duration']),
-            has_protocol=df['protocol_document_url'].notna(
-            ) | df['latest_protocol_document_url'].notna(),
-            has_result=df['result_document_url'].notna(
-            ) | df['latest_result_document_url'].notna()
+                x['planned_duration'])
         )
 
         return categories.sort_index(axis=1)
@@ -259,25 +243,26 @@ class Command(PandasCommand):
     def create_grouped_agg(self, data):
         import numpy as np
 
-        grouped = data.groupby(by=self.group_by_field_name, dropna=False)
+        grouped = data.assign(
+            past_data_collection=lambda x: x['data_collection_date_actual'].notna() &
+            (x['data_collection_date_actual'] <= self.compare_datetime),
+            past_data_collection_has_protocol=lambda x: x['past_data_collection'] & x['has_protocol'],
+            past_final_report=lambda x: x['final_report_date_actual'].notna() &
+            (x['final_report_date_actual'] <= self.compare_datetime),
+            past_final_report_has_protocol=lambda x: x['past_final_report'] & x['has_result']
+        ).groupby(by=self.group_by_field_name, dropna=False)
 
         def set_sum(x: PandasCommand.pd.Series):
-            return '; '.join(sorted(list(set(x.fillna('').apply(list).sum()))))
+            return len(set(x.dropna().apply(list).sum()))
 
         def bool_sum(x: PandasCommand.pd.Series):
             return x.dropna().astype(float).sum()
 
         def setify(x: PandasCommand.pd.Series):
-            return '; '.join(sorted(list(set(x.dropna().to_list()))))
+            return '; '.join(sorted(list(set(x.dropna().apply(list).sum()))))
 
         def mean_mean(x):
             return x.apply(np.mean).mean()
-
-        str_dummie_agg = {col.split(':')[-1]: (col, bool_sum)
-                          for col in data for field in self.str_dummy_fields if col.startswith(field) and ':' in col}
-
-        dummie_agg = {col.split(':')[-1]: (col, bool_sum)
-                      for col in data for field in self.dummy_fields if col.startswith(field) and ':' in col}
 
         percentage_agg = {
             f'mean_{col}': (col, 'mean') for col in self.percentage_fields
@@ -286,10 +271,9 @@ class Command(PandasCommand):
         grouped_agg = grouped.agg(
             num_collabs_with_research_network=(
                 'collaboration_with_research_network', bool_sum),
-            which_countries=('countries', set_sum),
+            num_countries=('countries', set_sum),
+            which_countries=('countries', setify),
             num_with_follow_up=('follow_up', bool_sum),
-            num_with_medical_conditions=('medical_conditions', bool_sum),
-            which_medical_conditions=('medical_conditions_details', setify),
             min_number_of_subjects=('number_of_subjects', 'min'),
             max_number_of_subjects=('number_of_subjects', 'max'),
             mean_number_of_subjects=('number_of_subjects', 'mean'),
@@ -299,20 +283,32 @@ class Command(PandasCommand):
             num_requested_by_regulator=('requested_by_regulator', bool_sum),
             num_using_established_data_sources=(
                 'uses_established_data_source', bool_sum),
-            **str_dummie_agg,
-            **dummie_agg,
             **percentage_agg,
-            mean_other_percentage=('funding_other_percentage', mean_mean)
+            mean_other_percentage=('funding_other_percentage', mean_mean),
+            num_has_result=('has_result', bool_sum),
+            num_has_protocol=('has_protocol', bool_sum),
+            num_past_data_collection=('past_data_collection', bool_sum),
+            num_past_data_collection_has_protocol=(
+                'past_data_collection_has_protocol', bool_sum),
+            num_past_final_report=('past_final_report', bool_sum),
+            num_past_final_report_has_protocol=(
+                'past_final_report_has_protocol', bool_sum)
         )
 
         sizes = grouped.size().rename('num_studies')
         grouped_agg = grouped_agg.merge(
-            sizes, left_index=True, right_index=True)
-
+            sizes,
+            left_index=True,
+            right_index=True
+        )
         return grouped_agg
 
     def run(self, args, opts):
         super().run(args, opts)
+        import numpy as np
+        import matplotlib as mpl
+        import matplotlib.pyplot as plt
+        from statsmodels.stats.proportion import proportion_confint
 
         self.logger = logging.getLogger()
         self.logger.info('Starting statistic script')
@@ -320,15 +316,159 @@ class Command(PandasCommand):
         self.logger.info('Reading input data...')
         data = self.preprocess(self.read_input())
 
+        data = data.assign(
+            has_protocol=data['protocol_document_url'].notna(
+            ) | data['latest_protocol_document_url'].notna(),
+            has_result=data['result_document_url'].notna(
+            ) | data['latest_result_document_url'].notna()
+        )
+
         self.logger.info('Generating categories...')
         categories = self.create_categories(data)
-        self.logger.info('Generating grouped aggregations...')
-        grouped_agg = self.create_grouped_agg(data)
+
+        self.logger.info('Writing some preanalysis data...')
+        self.write_output(data, '_statistics_preprocessed')
+        self.write_output(categories, '_statistics_categories')
+
+        categories_past_data_collection = categories[categories['data_collection_date_actual'].notna(
+        ) & (categories['data_collection_date_actual'] <= self.compare_datetime)]
+
+        categories_past_final_report = categories[categories['final_report_date_actual'].notna(
+        ) & (categories['final_report_date_actual'] <= self.compare_datetime)]
+
+        categories_two_weeks_past_final_report = categories[categories['final_report_date_actual'].notna(
+        ) & (categories['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D'))]
+
+        self.logger.info('Generating and writing part 1 of analysis...')
+        for df, suffix in [
+                (categories, '_all'),
+                (categories_past_data_collection, '_past_date_collection'),
+                (categories_past_final_report, '_past_final_report')]:
+
+            with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_frequencies{suffix}.xlsx', engine='openpyxl') as writer:
+
+                # Categories
+                df.to_excel(
+                    writer,
+                    sheet_name=f'categories{suffix}'[:31]
+                )
+
+                # Description of all numerical fields
+                # min max mean var etc.
+                df.describe().to_excel(
+                    writer,
+                    sheet_name='numerical_descriptions'
+                )
+
+                # NOTE: Can exclude numerical columns with - {'number_of_countries', 'number_of_subjects', 'planned_duration', 'registration_date'}
+                for col in sorted(set(df.columns)):
+
+                    # Absolute and relative frequencies of categories
+                    frequencies = self.pd.DataFrame().assign(
+                        absolute=df.loc[:, [col]].apply(
+                            lambda x: x.value_counts()),
+                        percentage=df.loc[:, [col]].apply(
+                            lambda x: x.value_counts(normalize=True) * 100)
+                    ).reset_index()
+
+                    frequencies.to_excel(
+                        writer,
+                        sheet_name=f'{col}_frequencies'[:31],
+                        index=False
+                    )
+
+                    if col in self.multiple_categories_fields:
+
+                        grouped_frequencies = frequencies \
+                            .assign(split=lambda x: x[col].str.split('; ')) \
+                            .explode('split') \
+                            .groupby('split')
+
+                        # Absolute and relative frequencies of subcategories
+                        overall_frequencies = self.pd.DataFrame().assign(
+                            overall_absolute=grouped_frequencies['absolute'].sum(
+                            ),
+                            overall_percentage=grouped_frequencies['percentage'].sum(
+                            ),
+                        ).reset_index().rename(columns={'split': col})
+
+                        overall_frequencies.to_excel(
+                            writer,
+                            sheet_name=f'{col}_frequencies'[:31],
+                            index=False,
+                            startcol=4
+                        )
+
+        self.logger.info('Generating and writing part 2 of analysis...')
+        for df, suffix in [
+                (categories, '_all'),
+                (categories_past_data_collection, '_past_date_collection'), (categories_two_weeks_past_final_report, '_two_weeks_past_final_report')]:
+
+            with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_documents{suffix}.xlsx', engine='openpyxl') as writer:
+
+                df.to_excel(
+                    writer,
+                    sheet_name=f'categories{suffix}'[:31]
+                )
+
+                for col in ['has_protocol', 'has_result']:
+
+                    size_df = len(df.loc[:, [col]])
+                    frequencies = df.loc[:, [col]] \
+                        .apply(lambda x: x.value_counts()) \
+                        .rename(columns={col: 'absolute'}) \
+                        .assign(
+                            percentage=df.loc[:, [col]].apply(
+                                lambda x: x.value_counts(normalize=True) * 100),
+                            confidence_interval=lambda x: x['absolute'].apply(
+                                lambda y: [z * 100 for z in proportion_confint(y, size_df, alpha=0.05, method='beta')])
+                    ).reset_index()
+
+                    frequencies.to_excel(
+                        writer,
+                        sheet_name=col[:31],
+                        index=False
+                    )
+
+                    # print(proportion_confint(
+                    #     frequencies['absolute'].iloc[0], size_df, alpha=0.05, method='normal'))
+                    # print(sp.stats.binomtest(
+                    #     frequencies['absolute'].iloc[0], size_df, p=float(frequencies['absolute'].iloc[0]) / float(size_df)).proportion_ci())
+
+                    size_df = len(
+                        df.loc[df['risk_management_plan'].isin(self.required_rmp), [col]])
+                    required_rmp_frequencies = df.loc[df['risk_management_plan'].isin(
+                        self.required_rmp), [col]] \
+                        .apply(lambda x: x.value_counts()) \
+                        .rename(columns={col: 'absolute'}) \
+                        .assign(
+                            percentage=df.loc[:, [col]].apply(
+                                lambda x: x.value_counts(normalize=True) * 100),
+                            confidence_interval=lambda x: x['absolute'].apply(
+                                lambda y: [z * 100 for z in proportion_confint(y, size_df, alpha=0.05, method='normal')])
+                    ).reset_index().rename(columns={col: f'required_{col}'})
+
+                    required_rmp_frequencies.to_excel(
+                        writer,
+                        sheet_name=col[:31],
+                        index=False,
+                        startrow=4
+                    )
+
+        self.logger.info('Generating and writing part 3 of analysis...')
+
+        data_to_group = categories.merge(
+            data.loc[:, [self.group_by_field_name, *self.percentage_fields,
+                         'funding_other_percentage', 'countries']],
+            left_index=True,
+            right_index=True
+        )
+        grouped_agg = self.create_grouped_agg(data_to_group)
+
+        self.write_output(grouped_agg, '_statistics_centre_all')
 
         self.logger.info('Generating and writing plots...')
         (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)
-        import matplotlib as mpl
-        import matplotlib.pyplot as plt
         mpl.style.use('bmh')
         date = data['registration_date'].dt.to_period('M')
         PandasCommand.pd.concat(
@@ -355,76 +495,3 @@ class Command(PandasCommand):
             kind='kde', title='Density of "Planned Duration"')
         plt.savefig(self.output_folder / 'plots' /
                     'planned_duration_density.png')
-
-        self.logger.info('Writing output data...')
-        self.write_output(data, '_statistics_preprocessed')
-        self.write_output(categories, '_statistics_categories')
-        self.write_output(grouped_agg, '_statistics_grouped_agg')
-
-        categories_past_data_collection = categories[categories['data_collection_date_actual'].notna(
-        ) & (categories['data_collection_date_actual'] <= self.compare_datetime)]
-
-        categories_past_final_report = categories[categories['final_report_date_actual'].notna(
-        ) & (categories['final_report_date_actual'] <= self.compare_datetime)]
-
-        for df, suffix in [(categories, '_all'), (categories_past_data_collection, '_past_date_collection'), (categories_past_final_report, '_past_final_report')]:
-            with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_described{suffix}.xlsx', engine='openpyxl') as writer:
-                df.to_excel(
-                    writer, sheet_name=f'categories{suffix}'[:31])
-                df.describe().to_excel(
-                    writer, sheet_name='numerical_descriptions')
-                for col in sorted(set(df.columns) - {'number_of_countries', 'number_of_subjects', 'planned_duration', 'registration_date'}):
-
-                    frequencies = df.loc[:, [col]].apply(lambda x: x.value_counts(
-                        normalize=True) * 100).rename(columns={col: 'percentage'}).reset_index()
-
-                    frequencies.to_excel(
-                        writer, sheet_name=f'{col}_frequencies'[:31], index=False)
-
-                    if col in self.multiple_categories_fields:
-                        overall_frequencies = frequencies.assign(split=lambda x: x[col].str.split(
-                            '; ')).explode('split').groupby('split')['percentage'].sum().reset_index().rename(columns={
-                                'split': col,
-                                'percentage': 'overall_percentage'})
-
-                        overall_frequencies.to_excel(
-                            writer, sheet_name=f'{col}_frequencies'[:31], index=False, startcol=3)
-
-        import numpy as np
-        categories_two_weeks_past_final_report = categories[categories['final_report_date_actual'].notna(
-        ) & (categories['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D'))]
-
-        for df, suffix in [(categories, '_all'), (categories_past_data_collection, '_past_date_collection'), (categories_two_weeks_past_final_report, '_two_weeks_past_final_report')]:
-            with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_documents{suffix}.xlsx', engine='openpyxl') as writer:
-                df.to_excel(
-                    writer, sheet_name=f'categories{suffix}'[:31])
-
-                for col in ['has_protocol', 'has_result']:
-
-                    size_df = len(df.loc[:, [col]])
-                    frequencies = df.loc[:, [col]].apply(lambda x: x.value_counts()) \
-                        .rename(columns={col: 'absolute'}) \
-                        .assign(
-                            percentage=df.loc[:, [col]].apply(
-                                lambda x: x.value_counts(normalize=True) * 100),
-                            confidence_interval=lambda x: x['absolute'].apply(
-                                lambda y: [z * 100 for z in proportion_confint(y, size_df, alpha=0.05, method='normal')])
-                    ).reset_index()
-
-                    frequencies.to_excel(
-                        writer, sheet_name=col[:31], index=False)
-
-                    size_df = len(
-                        df.loc[df['risk_management_plan'].isin(self.required_rmp), [col]])
-                    required_rmp_frequencies = df.loc[df['risk_management_plan'].isin(
-                        self.required_rmp), [col]].apply(lambda x: x.value_counts()) \
-                        .rename(columns={col: 'absolute'}) \
-                        .assign(
-                            percentage=df.loc[:, [col]].apply(
-                                lambda x: x.value_counts(normalize=True) * 100),
-                            confidence_interval=lambda x: x['absolute'].apply(
-                                lambda y: [z * 100 for z in proportion_confint(y, size_df, alpha=0.05, method='normal')])
-                    ).reset_index().rename(columns={col: f'required_{col}'})
-
-                    required_rmp_frequencies.to_excel(
-                        writer, sheet_name=col[:31], index=False, startrow=4)
