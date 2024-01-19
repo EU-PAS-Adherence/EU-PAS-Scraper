@@ -63,52 +63,52 @@ class Command(PandasCommand):
         else:
             self.compare_datetime = np.datetime64(datetime.utcnow(), 'm')
 
-    def preprocess(self, data):
+    def preprocess(self, df):
         import numpy as np
 
         # NOTE: Pandas reads boolean columns with NA Values as float
         # We need to fill na first because NA is True else
-        data['$CANCELLED'] = data['$CANCELLED'].fillna(False).astype(bool)
+        df['$CANCELLED'] = df['$CANCELLED'].fillna(False).astype(bool)
         self.logger.info(
-            f'Excluding {data["$CANCELLED"].astype(int).sum()} cancelled studies...')
-        data = data.loc[~data['$CANCELLED']]
+            f'Excluding {df["$CANCELLED"].astype(int).sum()} cancelled studies...')
+        df = df.loc[~df['$CANCELLED']]
 
         self.logger.info('Splitting strings to arrays')
         for field in self.array_fields:
-            data[field] = data[field].str.split('; ')
+            df[field] = df[field].str.split('; ')
 
         self.logger.info('Splitting multivalue fields into seperate columns')
         for field in self.array_detail_split_fields:
-            values = data[field]
-            data[field] = values.str[0]
-            data[f'{field}_details'] = values.str[1]
+            values = df[field]
+            df[field] = values.str[0]
+            df[f'{field}_details'] = values.str[1]
 
-        req_by_reg = data['requested_by_regulator'].str.split(': ')
-        data['requested_by_regulator'] = req_by_reg.str[0]
-        data['requested_by_regulator_details'] = req_by_reg.str[1].str.split(
+        req_by_reg = df['requested_by_regulator'].str.split(': ')
+        df['requested_by_regulator'] = req_by_reg.str[0]
+        df['requested_by_regulator_details'] = req_by_reg.str[1].str.split(
             ', ')
 
         self.logger.info('Converting strings to bools')
         for field in self.yes_eq_true_fields:
-            data[field] = np.where(data[field] == 'Yes', True, False)
+            df[field] = np.where(df[field] == 'Yes', True, False)
 
-        data.loc[data['requested_by_regulator'] ==
-                 'Yes', 'requested_by_regulator'] = True
-        data.loc[data['requested_by_regulator'] ==
-                 'No', 'requested_by_regulator'] = False
-        data.loc[data['requested_by_regulator'] ==
-                 "Don't know", 'requested_by_regulator'] = self.pd.NA
+        df.loc[df['requested_by_regulator'] ==
+               'Yes', 'requested_by_regulator'] = True
+        df.loc[df['requested_by_regulator'] ==
+               'No', 'requested_by_regulator'] = False
+        df.loc[df['requested_by_regulator'] ==
+               "Don't know", 'requested_by_regulator'] = self.pd.NA
 
         self.logger.info('Filling number columns with default value 0.0')
         for field in self.percentage_fields:
-            data[field].fillna(0.0, inplace=True)
+            df[field].fillna(0.0, inplace=True)
 
-        data['funding_other_percentage'] = data['funding_other_percentage'].apply(
+        df['funding_other_percentage'] = df['funding_other_percentage'].apply(
             lambda x: list(map(float, x)) if isinstance(x, list) else [0.0])
 
-        data = data.set_index('eu_pas_register_number')
+        df = df.set_index('eu_pas_register_number')
 
-        return data.sort_index(axis=1)
+        return df.sort_index(axis='columns')
 
     def create_categories(self, df):
         import numpy as np
@@ -182,15 +182,13 @@ class Command(PandasCommand):
             num_sources = sum(map(lambda x: x.astype(int), [
                               funded_by_companies, funded_by_charities, funded_by_government_bodies, fundes_by_research_councils, funded_by_eu_schemes, funded_by_other]))
             multiple_funding_sources = np.where(num_sources > 1, True, False)
-            return (list(map(lambda x: x or PandasCommand.pd.NA, ['; '.join(filter(bool, x)) for x in zip(companies, charities, government_bodies, research_councils, eu_schemes, other)])), multiple_funding_sources)
+            return (list(map(lambda x: x or self.pd.NA, ['; '.join(filter(bool, x)) for x in zip(companies, charities, government_bodies, research_councils, eu_schemes, other)])), multiple_funding_sources)
 
         categories = df.loc[:, [
             'state', 'risk_management_plan', 'follow_up',
             'requested_by_regulator', 'collaboration_with_research_network',
             'country_type', 'medical_conditions', 'uses_established_data_source',
-            'primary_outcomes', 'secondary_outcomes', 'number_of_subjects',
-            'data_collection_date_actual', 'final_report_date_actual',
-            'has_protocol', 'has_result']]
+            'primary_outcomes', 'secondary_outcomes', 'number_of_subjects']]
 
         funded_by, multiple_funding_sources = get_funding_sources()
 
@@ -212,10 +210,15 @@ class Command(PandasCommand):
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
                 lambda x: len(x) if len(x) < 3 else '3 or more'),
-            countries_quartiles=lambda x: get_quartiles(
+            number_of_countries_quartiles=lambda x: get_quartiles(
                 x['number_of_countries']),
             number_of_subjects_grouped=df['number_of_subjects'].apply(
-                lambda x: '<1000' if x < 1000 else '>10000' if x > 10000 else '1000-10000'
+                lambda x:
+                '<100' if x < 100 else
+                '100-<500' if x < 500 else
+                '500-<1000' if x < 1000 else
+                '1000-10000' if x < 10000 else
+                '>10000'
             ),
             number_of_subjects_quartiles=get_quartiles(
                 df['number_of_subjects']),
@@ -238,19 +241,23 @@ class Command(PandasCommand):
                 x['planned_duration'])
         )
 
-        return categories.sort_index(axis=1)
+        return categories.sort_index(axis='columns')
 
-    def create_grouped_agg(self, data):
+    def create_grouped_agg(self, df):
         import numpy as np
 
-        grouped = data.assign(
+        dummy_fields = ['state', 'risk_management_plan']
+        dummies = self.pd.get_dummies(
+            df[dummy_fields]).rename(columns=self.python_name_converter)
+
+        grouped = df.assign(
             past_data_collection=lambda x: x['data_collection_date_actual'].notna() &
             (x['data_collection_date_actual'] <= self.compare_datetime),
             past_data_collection_has_protocol=lambda x: x['past_data_collection'] & x['has_protocol'],
             past_final_report=lambda x: x['final_report_date_actual'].notna() &
             (x['final_report_date_actual'] <= self.compare_datetime),
             past_final_report_has_protocol=lambda x: x['past_final_report'] & x['has_result']
-        ).groupby(by=self.group_by_field_name, dropna=False)
+        ).merge(dummies, left_index=True, right_index=True).groupby(by=self.group_by_field_name, dropna=False)
 
         def set_sum(x: PandasCommand.pd.Series):
             return len(set(x.dropna().apply(list).sum()))
@@ -264,34 +271,44 @@ class Command(PandasCommand):
         def mean_mean(x):
             return x.apply(np.mean).mean()
 
+        dummie_agg = {
+            f'number_of_studies_with_{col}': (col, bool_sum) for col in dummies
+        }
+
         percentage_agg = {
             f'mean_{col}': (col, 'mean') for col in self.percentage_fields
         }
 
         grouped_agg = grouped.agg(
-            num_collabs_with_research_network=(
+            number_of_collaborations_with_research_network=(
                 'collaboration_with_research_network', bool_sum),
-            num_countries=('countries', set_sum),
-            which_countries=('countries', setify),
-            num_with_follow_up=('follow_up', bool_sum),
+            number_of_countries=('countries', set_sum),
+            set_of_countries=('countries', setify),
+            number_of_studies_with_follow_up=('follow_up', bool_sum),
             min_number_of_subjects=('number_of_subjects', 'min'),
             max_number_of_subjects=('number_of_subjects', 'max'),
             mean_number_of_subjects=('number_of_subjects', 'mean'),
             median_number_of_subjects=('number_of_subjects', 'median'),
-            num_with_primary_outcomes=('primary_outcomes', bool_sum),
-            num_with_secondary_outcomes=('secondary_outcomes', bool_sum),
-            num_requested_by_regulator=('requested_by_regulator', bool_sum),
-            num_using_established_data_sources=(
+            number_of_studies_with_primary_outcomes=(
+                'primary_outcomes', bool_sum),
+            number_of_studies_with_secondary_outcomes=(
+                'secondary_outcomes', bool_sum),
+            number_of_studies_requested_by_regulator=(
+                'requested_by_regulator', bool_sum),
+            number_of_studies_using_established_data_sources=(
                 'uses_established_data_source', bool_sum),
+            **dummie_agg,
             **percentage_agg,
             mean_other_percentage=('funding_other_percentage', mean_mean),
-            num_has_result=('has_result', bool_sum),
-            num_has_protocol=('has_protocol', bool_sum),
-            num_past_data_collection=('past_data_collection', bool_sum),
-            num_past_data_collection_has_protocol=(
+            number_of_studies_with_result=('has_result', bool_sum),
+            number_of_studies_with_protocol=('has_protocol', bool_sum),
+            number_of_studies_with_past_data_collection=(
+                'past_data_collection', bool_sum),
+            number_of_studies_with_past_data_collection_and_protocol=(
                 'past_data_collection_has_protocol', bool_sum),
-            num_past_final_report=('past_final_report', bool_sum),
-            num_past_final_report_has_protocol=(
+            number_of_studies_with_final_report=(
+                'past_final_report', bool_sum),
+            number_of_studies_with_past_final_report_and_protocol=(
                 'past_final_report_has_protocol', bool_sum)
         )
 
@@ -302,6 +319,85 @@ class Command(PandasCommand):
             right_index=True
         )
         return grouped_agg
+
+    def create_dummies(self, df):
+        # import numpy as np
+
+        dummy_without_na_drop_map = {
+            'state': 'Finalised',
+            # 'registration_date':
+            'planned_duration_quartiles': 1,
+            # 'study_type': 'Observational study',
+            'collaboration_with_research_network': False,
+            'country_type': 'National study',
+            'number_of_countries_grouped': '3 or more',
+            'number_of_countries_quartiles': 1,
+            # 'funded_by': 'Pharmaceutical companies',
+            'multiple_funding_sources': False,
+            'medical_conditions': True,
+            # 'age_population': '18-64 years',
+            # 'sex_population': 'Male; Female',
+            'number_of_subjects_grouped': '100-<500',
+            'number_of_subjects_quartiles': 1,
+            'uses_established_data_source': False,
+            'follow_up': False,
+            # 'scopes': 'Risk assessment',
+            'primary_outcomes': False,
+            'secondary_outcomes': False
+        }
+
+        dummy_with_na_drop_map = {
+            'requested_by_regulator': False,
+            'risk_management_plan': 'Not applicable',
+            # 'other_population': str(np.nan),
+        }
+
+        dummy_drop_map = {
+            **dummy_without_na_drop_map,
+            **dummy_with_na_drop_map
+        }
+
+        prefix_sep = '__'
+        dummies = self.pd.concat([
+            self.pd.get_dummies(
+                df[dummy_without_na_drop_map.keys()],
+                prefix_sep=prefix_sep,
+                columns=dummy_without_na_drop_map.keys()
+            ),
+            self.pd.get_dummies(
+                df[dummy_with_na_drop_map.keys()],
+                prefix_sep=prefix_sep,
+                columns=dummy_with_na_drop_map.keys(),
+                dummy_na=True
+            )],
+            axis='columns'
+        )
+
+        columns_to_drop = [
+            col for col in dummies if str(dummy_drop_map[col.split(prefix_sep)[0]]) == col.split(prefix_sep)[-1]
+        ]
+        return dummies.drop(columns=columns_to_drop).rename(columns=self.python_name_converter)
+
+    def univariate_lr(self, df, y):
+        import statsmodels.formula.api as smf
+
+        variables = {col.split('__')[0] for col in df.columns}
+        col_var_map = {
+            v: [col for col in df.columns if col.startswith(v) and '__' in col]
+            for v in variables
+        }
+        col_var_map = {var: cols for var, cols in col_var_map.items() if cols}
+
+        results = {}
+
+        for var, cols in col_var_map.items():
+            escaped_vars = [f'Q("{col}")' for col in cols]
+            formula = f'{y} ~ {" + ".join(escaped_vars)}'
+            self.logger.info(f'Running: {formula}')
+            lr_result = smf.logit(formula, df).fit()
+            results.setdefault(var, lr_result)
+
+        return results
 
     def run(self, args, opts):
         super().run(args, opts)
@@ -325,6 +421,14 @@ class Command(PandasCommand):
 
         self.logger.info('Generating categories...')
         categories = self.create_categories(data)
+        categories = categories.merge(
+            data.loc[:, [
+                'data_collection_date_actual', 'final_report_date_actual',
+                'has_protocol', 'has_result'
+            ]],
+            left_index=True,
+            right_index=True
+        )
 
         self.logger.info('Writing some preanalysis data...')
         self.write_output(data, '_statistics_preprocessed')
@@ -456,7 +560,6 @@ class Command(PandasCommand):
                     )
 
         self.logger.info('Generating and writing part 3 of analysis...')
-
         data_to_group = categories.merge(
             data.loc[:, [self.group_by_field_name, *self.percentage_fields,
                          'funding_other_percentage', 'countries']],
@@ -464,18 +567,55 @@ class Command(PandasCommand):
             right_index=True
         )
         grouped_agg = self.create_grouped_agg(data_to_group)
-
         self.write_output(grouped_agg, '_statistics_centre_all')
+
+        for df, y, name in [
+                (categories_past_data_collection, 'has_protocol', 'protocol'),
+                (categories_two_weeks_past_final_report, 'has_result', 'results')]:
+
+            self.logger.info(
+                'Generating and writing dummies for logistic regression...')
+            dummies = self.create_dummies(df)
+            dummies = dummies.merge(
+                df.loc[:, [y]],
+                left_index=True,
+                right_index=True,
+                how='right'
+            )
+            dummies[y] = dummies[y].astype(int)
+            self.write_output(
+                dummies, f'_statistics_categories_dummies_{name}')
+
+            self.logger.info(
+                'Running univariate logistic regression and writing output...')
+            results = self.univariate_lr(dummies, y)
+            (self.output_folder /
+             f'univariate_models/models/{name}/').mkdir(parents=True, exist_ok=True)
+            (self.output_folder /
+             f'univariate_models/summaries/{name}/').mkdir(parents=True, exist_ok=True)
+
+            for file_name, model_result in results.items():
+                model_result.save(
+                    self.output_folder / 'univariate_models/models' / name / f'{file_name}.pickle')
+
+                (self.output_folder / 'univariate_models/summaries' / name / f'{file_name}.txt') \
+                    .write_text(model_result.summary().as_text())
+
+                (self.output_folder / 'univariate_models/summaries' / name / f'{file_name}.html') \
+                    .write_text(model_result.summary().as_html())
+
+                (self.output_folder / 'univariate_models/summaries' / name / f'{file_name}.csv') \
+                    .write_text(model_result.summary().as_csv())
 
         self.logger.info('Generating and writing plots...')
         (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)
         mpl.style.use('bmh')
         date = data['registration_date'].dt.to_period('M')
-        PandasCommand.pd.concat(
+        self.pd.concat(
             [
                 data.groupby(date).size().rename('studies'),
                 data.groupby(date).size().cumsum().rename('cumulated studies')
-            ], axis=1).plot(
+            ], axis='columns').plot(
             title='Frequency of studies by "Registration Date"',
             xlabel='Registration Date',
             ylabel='# of studies',

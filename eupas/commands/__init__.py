@@ -69,19 +69,29 @@ class PandasCommand(ScrapyCommand):
         import pandas as pd
         PandasCommand.pd = pd
 
+    def python_name_converter(self, x):
+        return '_'.join([word.lower() for word in x.split(' ')]) if x[0] != '$' else x
+
     def read_input(self):
         input_data = None
         if self.input_path.suffix == '.csv':
             input_data = self.pd.read_csv(
-                self.input_path, keep_default_na=False, na_values=self.na_values, na_filter=True)
+                self.input_path,
+                keep_default_na=False,
+                na_values=self.na_values,
+                na_filter=True
+            )
         elif self.input_path.suffix == '.json':
             input_data = self.pd.read_json(self.input_path)
         elif self.input_path.suffix == '.xlsx':
             input_data = self.pd.read_excel(
-                self.input_path, keep_default_na=False, na_values=self.na_values, na_filter=True).iloc[:, 1:]
+                self.input_path,
+                keep_default_na=False,
+                na_values=self.na_values,
+                na_filter=True
+            ).iloc[:, 1:]
             input_data.rename(
-                columns=lambda x: '_'.join(
-                    [word.lower() for word in x.split(' ')]) if x[0] != '$' else x,
+                columns=self.python_name_converter,
                 inplace=True
             )
         elif self.input_path.suffix == '.xml':
@@ -99,9 +109,14 @@ class PandasCommand(ScrapyCommand):
             data.to_csv(output_path)
         elif output_path.suffix == '.json':
             data.to_json(
-                output_path, orient='records', force_ascii=False)
+                output_path,
+                orient='records',
+                force_ascii=False
+            )
         elif output_path.suffix == '.xlsx':
             data.rename(columns=self.excel_name_converter).to_excel(
-                output_path, sheet_name='PAS')
+                output_path,
+                sheet_name='PAS'
+            )
         elif output_path.suffix == '.xml':
             data.to_xml(output_path)
