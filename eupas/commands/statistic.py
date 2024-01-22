@@ -320,12 +320,12 @@ class Command(PandasCommand):
         )
         return grouped_agg
 
-    def create_dummies(self, df):
+    def create_dummies(self, df, drop_references=True):
         # import numpy as np
 
         dummy_without_na_drop_map = {
             'state': 'Finalised',
-            # 'registration_date':
+            'registration_date': 2010,  # NOTE: Choose other reference?
             'planned_duration_quartiles': 1,
             # 'study_type': 'Observational study',
             'collaboration_with_research_network': False,
@@ -373,10 +373,14 @@ class Command(PandasCommand):
             axis='columns'
         )
 
-        columns_to_drop = [
-            col for col in dummies if str(dummy_drop_map[col.split(prefix_sep)[0]]) == col.split(prefix_sep)[-1]
-        ]
-        return dummies.drop(columns=columns_to_drop).rename(columns=self.python_name_converter)
+        if drop_references:
+            columns_to_drop = [
+                col for col in dummies if str(dummy_drop_map[col.split(prefix_sep)[0]]) == col.split(prefix_sep)[-1]
+            ]
+
+            dummies.drop(columns=columns_to_drop, inplace=True)
+
+        return dummies.rename(columns=self.python_name_converter)
 
     def univariate_lr(self, df, y):
         import statsmodels.formula.api as smf
@@ -394,7 +398,7 @@ class Command(PandasCommand):
             escaped_vars = [f'Q("{col}")' for col in cols]
             formula = f'{y} ~ {" + ".join(escaped_vars)}'
             self.logger.info(f'Running: {formula}')
-            lr_result = smf.logit(formula, df).fit()
+            lr_result = smf.logit(formula, df).fit(warn_convergence=True)
             results.setdefault(var, lr_result)
 
         return results
@@ -569,26 +573,53 @@ class Command(PandasCommand):
         grouped_agg = self.create_grouped_agg(data_to_group)
         self.write_output(grouped_agg, '_statistics_centre_all')
 
-        for df, y, name in [
+        for df, y_label, name in [
                 (categories_past_data_collection, 'has_protocol', 'protocol'),
                 (categories_two_weeks_past_final_report, 'has_result', 'results')]:
 
             self.logger.info(
                 'Generating and writing dummies for logistic regression...')
             dummies = self.create_dummies(df)
-            dummies = dummies.merge(
-                df.loc[:, [y]],
+            y = df.loc[:, [y_label]].astype(int)
+            dummies_y = dummies.merge(
+                y,
                 left_index=True,
                 right_index=True,
                 how='right'
             )
-            dummies[y] = dummies[y].astype(int)
             self.write_output(
-                dummies, f'_statistics_categories_dummies_{name}')
+                dummies_y, f'_statistics_categories_dummies_{name}')
+
+            self.logger.info(
+                'Generating and writing correlations for logistic regression...')
+            dummies_all = self.create_dummies(df, drop_references=False)
+            dummies_all_y = dummies_all.merge(
+                y,
+                left_index=True,
+                right_index=True,
+                how='right'
+            )
+
+            # import seaborn as sns
+            # sns.set_theme(style="white")
+            # corr = dummies_all_y.corr()
+            # f, ax = plt.subplots(figsize=(11, 9))
+            # mask = np.triu(np.ones_like(corr, dtype=bool))
+            # cmap = sns.diverging_palette(230, 20, as_cmap=True)
+            # sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
+            #             square=True, linewidths=.5, cbar_kws={"shrink": .5})
+            # f.savefig(f'test_{name}.png')
+
+            correlations = dummies_all_y \
+                .corr(method='pearson')[y_label] \
+                .drop(y_label) \
+                .rename(f'{y_label}_pearson_correlation_coefficient')
+            self.write_output(
+                correlations.to_frame(), f'_statistics_categories_dummies_correlations_{name}')
 
             self.logger.info(
                 'Running univariate logistic regression and writing output...')
-            results = self.univariate_lr(dummies, y)
+            results = self.univariate_lr(dummies_y, y_label)
             (self.output_folder /
              f'univariate_models/models/{name}/').mkdir(parents=True, exist_ok=True)
             (self.output_folder /
