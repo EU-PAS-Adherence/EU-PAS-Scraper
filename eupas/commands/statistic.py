@@ -337,8 +337,8 @@ class Command(PandasCommand):
             # 'funded_by': 'Pharmaceutical companies',
             'multiple_funding_sources': False,
             'medical_conditions': True,
-            # 'age_population': '18-64 years',
-            # 'sex_population': 'Male; Female',
+            'age_population': '18-64 years',  # NOTE: Combined Categories
+            'sex_population': 'Male; Female',  # NOTE: Combined Categories
             'number_of_subjects_grouped': '100-<500',
             'number_of_subjects_quartiles': 1,
             'uses_established_data_source': False,
@@ -455,11 +455,20 @@ class Command(PandasCommand):
         categories_two_weeks_past_final_report = categories[categories['final_report_date_actual'].notna(
         ) & (categories['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D'))]
 
+        categories_past_data_collection_without_two_weeks_past_final_report = \
+            categories_past_data_collection[
+                ~categories_past_data_collection.index.isin(
+                    categories_two_weeks_past_final_report.index)]
+
         self.logger.info('Generating and writing part 1 of analysis...')
         for df, suffix in [
                 (categories, '_all'),
-                (categories_past_data_collection, '_past_date_collection'),
-                (categories_two_weeks_past_final_report, '_two_weeks_past_final_report')]:
+                (categories_past_data_collection,
+                 '_past_date_collection'),
+                (categories_two_weeks_past_final_report,
+                 '_two_weeks_past_final_report'),
+                (categories_past_data_collection_without_two_weeks_past_final_report,
+                 '_past_data_collection_without_two_weeks_past_final_report')]:
 
             with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_frequencies{suffix}.xlsx', engine='openpyxl') as writer:
 
@@ -521,8 +530,12 @@ class Command(PandasCommand):
         self.logger.info('Generating and writing part 2 of analysis...')
         for df, suffix in [
                 (categories, '_all'),
-                (categories_past_data_collection, '_past_date_collection'),
-                (categories_two_weeks_past_final_report, '_two_weeks_past_final_report')]:
+                (categories_past_data_collection,
+                 '_past_date_collection'),
+                (categories_two_weeks_past_final_report,
+                 '_two_weeks_past_final_report'),
+                (categories_past_data_collection_without_two_weeks_past_final_report,
+                 '_past_data_collection_without_two_weeks_past_final_report')]:
 
             with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_documents{suffix}.xlsx', engine='openpyxl') as writer:
 

@@ -189,7 +189,7 @@ class Command(PandasCommand):
                 )]
                 if not not_matched.empty:
                     check_match_data = {
-                        field: not_matched.loc[data[field].notna(), field].drop_duplicates().sort_values().values for field in self.centre_match_checking_fields
+                        field: not_matched.loc[data[field].notna(), field].drop_duplicates().sort_values().tolist() for field in self.centre_match_checking_fields
                     }
 
                     with open(self.output_folder / f'{self.centre_match_missing_file_name_prefix}_all.json', 'w', encoding='utf-8') as f:
