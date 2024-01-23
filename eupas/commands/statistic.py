@@ -33,6 +33,8 @@ class Command(PandasCommand):
     required_rmp = ['EU RMP category 1 (imposed as condition of marketing authorisation)',
                     'EU RMP category 2 (specific obligation of marketing authorisation)']
 
+    max_sheet_name_length = 31
+
     def syntax(self):
         return "[options]"
 
@@ -67,7 +69,7 @@ class Command(PandasCommand):
         import numpy as np
 
         # NOTE: Pandas reads boolean columns with NA Values as float
-        # We need to fill na first because NA is True else
+        # NOTE: We need to fill na first because NA will be True else
         df['$CANCELLED'] = df['$CANCELLED'].fillna(False).astype(bool)
         self.logger.info(
             f'Excluding {df["$CANCELLED"].astype(int).sum()} cancelled studies...')
@@ -99,7 +101,8 @@ class Command(PandasCommand):
         df.loc[df['requested_by_regulator'] ==
                "Don't know", 'requested_by_regulator'] = self.pd.NA
 
-        self.logger.info('Filling number columns with default value 0.0')
+        self.logger.info(
+            'Filling empty cells in percentage columns with default value 0.0')
         for field in self.percentage_fields:
             df[field].fillna(0.0, inplace=True)
 
@@ -325,9 +328,8 @@ class Command(PandasCommand):
 
         dummy_without_na_drop_map = {
             'state': 'Finalised',
-            'registration_date': 2010,  # NOTE: Choose other reference?
             'planned_duration_quartiles': 1,
-            # 'study_type': 'Observational study',
+            'study_type': 'Observational study',
             'collaboration_with_research_network': False,
             'country_type': 'National study',
             'number_of_countries_grouped': '3 or more',
@@ -382,6 +384,11 @@ class Command(PandasCommand):
 
         return dummies.rename(columns=self.python_name_converter)
 
+    def create_variables(self, df, drop_references=True):
+        dummies = self.create_dummies(df, drop_references)
+        variables = dummies.assign(registration_date=df['registration_date'])
+        return variables
+
     def univariate_lr(self, df, y):
         import statsmodels.formula.api as smf
 
@@ -398,7 +405,11 @@ class Command(PandasCommand):
             escaped_vars = [f'Q("{col}")' for col in cols]
             formula = f'{y} ~ {" + ".join(escaped_vars)}'
             self.logger.info(f'Running: {formula}')
-            lr_result = smf.logit(formula, df).fit(warn_convergence=True)
+            lr_result = smf.logit(formula, df).fit(
+                maxiter=100,
+                warn_convergence=True,
+                disp=True  # NOTE: Set to false to disable printing convergence messages
+            )
             results.setdefault(var, lr_result)
 
         return results
@@ -441,9 +452,6 @@ class Command(PandasCommand):
         categories_past_data_collection = categories[categories['data_collection_date_actual'].notna(
         ) & (categories['data_collection_date_actual'] <= self.compare_datetime)]
 
-        categories_past_final_report = categories[categories['final_report_date_actual'].notna(
-        ) & (categories['final_report_date_actual'] <= self.compare_datetime)]
-
         categories_two_weeks_past_final_report = categories[categories['final_report_date_actual'].notna(
         ) & (categories['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D'))]
 
@@ -451,14 +459,15 @@ class Command(PandasCommand):
         for df, suffix in [
                 (categories, '_all'),
                 (categories_past_data_collection, '_past_date_collection'),
-                (categories_past_final_report, '_past_final_report')]:
+                (categories_two_weeks_past_final_report, '_two_weeks_past_final_report')]:
 
             with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_frequencies{suffix}.xlsx', engine='openpyxl') as writer:
 
                 # Categories
                 df.to_excel(
                     writer,
-                    sheet_name=f'categories{suffix}'[:31]
+                    sheet_name=f'categories{suffix}'[
+                        :self.max_sheet_name_length]
                 )
 
                 # Description of all numerical fields
@@ -481,7 +490,8 @@ class Command(PandasCommand):
 
                     frequencies.to_excel(
                         writer,
-                        sheet_name=f'{col}_frequencies'[:31],
+                        sheet_name=f'{col}_frequencies'[
+                            :self.max_sheet_name_length],
                         index=False
                     )
 
@@ -502,7 +512,8 @@ class Command(PandasCommand):
 
                         overall_frequencies.to_excel(
                             writer,
-                            sheet_name=f'{col}_frequencies'[:31],
+                            sheet_name=f'{col}_frequencies'[
+                                :self.max_sheet_name_length],
                             index=False,
                             startcol=4
                         )
@@ -510,55 +521,47 @@ class Command(PandasCommand):
         self.logger.info('Generating and writing part 2 of analysis...')
         for df, suffix in [
                 (categories, '_all'),
-                (categories_past_data_collection, '_past_date_collection'), (categories_two_weeks_past_final_report, '_two_weeks_past_final_report')]:
+                (categories_past_data_collection, '_past_date_collection'),
+                (categories_two_weeks_past_final_report, '_two_weeks_past_final_report')]:
 
             with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_documents{suffix}.xlsx', engine='openpyxl') as writer:
 
                 df.to_excel(
                     writer,
-                    sheet_name=f'categories{suffix}'[:31]
+                    sheet_name=f'categories{suffix}'[
+                        :self.max_sheet_name_length]
                 )
 
                 for col in ['has_protocol', 'has_result']:
 
-                    size_df = len(df.loc[:, [col]])
-                    frequencies = df.loc[:, [col]] \
-                        .apply(lambda x: x.value_counts()) \
-                        .rename(columns={col: 'absolute'}) \
-                        .assign(
-                            percentage=df.loc[:, [col]].apply(
-                                lambda x: x.value_counts(normalize=True) * 100),
-                            confidence_interval=lambda x: x['absolute'].apply(
-                                lambda y: [z * 100 for z in proportion_confint(y, size_df, alpha=0.05, method='beta')])
-                    ).reset_index()
+                    def get_frequencies_with_ci(df, alpha=0.05):
+                        return df.apply(lambda x: x.value_counts()) \
+                            .rename(columns={col: 'absolute'}) \
+                            .assign(
+                                percentage=df.apply(
+                                    lambda x: x.value_counts(normalize=True) * 100),
+                                confidence_interval=lambda x: x['absolute'].apply(
+                                    lambda y: [z * 100 for z in proportion_confint(y, len(df), alpha=0.05, method='beta')])
+                        ).reset_index()
+
+                    # Absolute and relative frequencies (with 95%-CI) of categories with protocols or results
+                    frequencies = get_frequencies_with_ci(df.loc[:, [col]])
 
                     frequencies.to_excel(
                         writer,
-                        sheet_name=col[:31],
+                        sheet_name=col[:self.max_sheet_name_length],
                         index=False
                     )
 
-                    # print(proportion_confint(
-                    #     frequencies['absolute'].iloc[0], size_df, alpha=0.05, method='normal'))
-                    # print(sp.stats.binomtest(
-                    #     frequencies['absolute'].iloc[0], size_df, p=float(frequencies['absolute'].iloc[0]) / float(size_df)).proportion_ci())
-
-                    size_df = len(
-                        df.loc[df['risk_management_plan'].isin(self.required_rmp), [col]])
-                    required_rmp_frequencies = df.loc[df['risk_management_plan'].isin(
-                        self.required_rmp), [col]] \
-                        .apply(lambda x: x.value_counts()) \
-                        .rename(columns={col: 'absolute'}) \
-                        .assign(
-                            percentage=df.loc[:, [col]].apply(
-                                lambda x: x.value_counts(normalize=True) * 100),
-                            confidence_interval=lambda x: x['absolute'].apply(
-                                lambda y: [z * 100 for z in proportion_confint(y, size_df, alpha=0.05, method='normal')])
-                    ).reset_index().rename(columns={col: f'required_{col}'})
+                    # Same metrics for the subset of studies required by RMP
+                    required_rmp_frequencies = get_frequencies_with_ci(
+                        df.loc[df['risk_management_plan'].isin(
+                            self.required_rmp), [col]]
+                    ).rename(columns={col: f'required_{col}'})
 
                     required_rmp_frequencies.to_excel(
                         writer,
-                        sheet_name=col[:31],
+                        sheet_name=col[:self.max_sheet_name_length],
                         index=False,
                         startrow=4
                     )
@@ -578,22 +581,24 @@ class Command(PandasCommand):
                 (categories_two_weeks_past_final_report, 'has_result', 'results')]:
 
             self.logger.info(
-                'Generating and writing dummies for logistic regression...')
-            dummies = self.create_dummies(df)
+                f'Starting univariate logistic regression for {y_label}...')
+            self.logger.info(
+                'Generating and writing variables for logistic regression...')
+            variables = self.create_variables(df)
             y = df.loc[:, [y_label]].astype(int)
-            dummies_y = dummies.merge(
+            variables_y = variables.merge(
                 y,
                 left_index=True,
                 right_index=True,
                 how='right'
             )
             self.write_output(
-                dummies_y, f'_statistics_categories_dummies_{name}')
+                variables_y, f'_statistics_categories_variables_{name}')
 
             self.logger.info(
                 'Generating and writing correlations for logistic regression...')
-            dummies_all = self.create_dummies(df, drop_references=False)
-            dummies_all_y = dummies_all.merge(
+            variables_all = self.create_variables(df, drop_references=False)
+            variables_all_y = variables_all.merge(
                 y,
                 left_index=True,
                 right_index=True,
@@ -610,16 +615,16 @@ class Command(PandasCommand):
             #             square=True, linewidths=.5, cbar_kws={"shrink": .5})
             # f.savefig(f'test_{name}.png')
 
-            correlations = dummies_all_y \
+            correlations = variables_all_y \
                 .corr(method='pearson')[y_label] \
                 .drop(y_label) \
                 .rename(f'{y_label}_pearson_correlation_coefficient')
             self.write_output(
-                correlations.to_frame(), f'_statistics_categories_dummies_correlations_{name}')
+                correlations.to_frame(), f'_statistics_categories_variables_correlations_{name}')
 
             self.logger.info(
                 'Running univariate logistic regression and writing output...')
-            results = self.univariate_lr(dummies_y, y_label)
+            results = self.univariate_lr(variables_y, y_label)
             (self.output_folder /
              f'univariate_models/models/{name}/').mkdir(parents=True, exist_ok=True)
             (self.output_folder /
