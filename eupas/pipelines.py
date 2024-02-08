@@ -17,8 +17,8 @@ class DuplicatesPipeline:
 
     def process_item(self, item: item.Item, _: spiders.Spider):
         adapter = ItemAdapter(item)
-        if (id := adapter.get('eu_pas_register_number')) in self.ids_seen:
+        if (eupas_id := adapter.get('eu_pas_register_number')) in self.ids_seen:
             raise exceptions.DropItem(f'Duplicate item found: {item!r}')
 
-        self.ids_seen.add(id)
+        self.ids_seen.add(eupas_id)
         return item

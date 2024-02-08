@@ -23,6 +23,8 @@ class Command(PandasCommand):
     substance_match_fields = ['sustance_atc', 'substance_inn']
 
     study_cancelled_meta_field_name = '$CANCELLED'
+
+    # TODO: Train logistic regression model with ML-Approach
     study_cancelled_patterns = [
         # Best predictor of cancellation
         r'\bcancel',
@@ -67,6 +69,9 @@ class Command(PandasCommand):
     updated_state_meta_field_name = '$UPDATED_state'
 
     def add_options(self, parser):
+        '''
+        Adds custom options to the base pandas command.
+        '''
         PandasCommand.add_options(self, parser)
         patch = parser.add_argument_group(title="Custom Patching Options")
         patch.add_argument(
@@ -133,6 +138,12 @@ class Command(PandasCommand):
         return "Patch the input file by matching the provided field_names"
 
     def run(self, args, opts):
+        '''
+        Performs different tasks based on arguments:
+            centre_match        This will unify the centre_name columns with the help of a matching spreadsheet\n
+            substance_match     This will unify the substances columns with the help of a matching spreadsheet\n
+            cancel              This will find cancelled studies with a list of regex patterns
+        '''
         super().run(args, opts)
 
         if len(args) == 0:
@@ -160,16 +171,23 @@ class Command(PandasCommand):
 
             self.logger.info('\tReading centre matching data...')
             matching_data = self.pd.read_excel(
-                self.centre_match_path, sheet_name=self.centre_match_fields, keep_default_na=False, na_values=self.na_values, na_filter=True)
+                self.centre_match_path,
+                sheet_name=self.centre_match_fields,
+                keep_default_na=False,
+                na_values=self.na_values,
+                na_filter=True
+            )
 
             for field_name in self.centre_match_fields:
                 # NOTE: If validation fails: check for duplicate original values in the matching file or values matching the na_values
                 data = self.pd.merge(
                     data,
-                    matching_data[field_name].loc[:, ['manual', 'original']].rename(columns={
-                        'manual': f'{self.matched_meta_field_name_prefix}_{field_name}',
-                        'original': field_name
-                    }),
+                    matching_data[field_name].loc[:, ['manual', 'original']].rename(
+                        columns={
+                            'manual': f'{self.matched_meta_field_name_prefix}_{field_name}',
+                            'original': field_name
+                        }
+                    ),
                     how='left',
                     on=field_name,
                     validate='m:1'
@@ -177,29 +195,39 @@ class Command(PandasCommand):
 
             centre_match_combined_field_name = f'{self.matched_meta_field_name_prefix}_combined_centre_name'
 
-            data[centre_match_combined_field_name] = data[[f'{self.matched_meta_field_name_prefix}_{field_name}' for field_name in self.centre_match_fields]].apply(
-                lambda x: ''.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
+            data[centre_match_combined_field_name] = \
+                data[[f'{self.matched_meta_field_name_prefix}_{field_name}' for field_name in self.centre_match_fields]] \
+                .apply(lambda x: ''.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
             data.loc[data[centre_match_combined_field_name] ==
                      '', centre_match_combined_field_name] = self.pd.NA
             self.logger.info('Centre matching finished')
 
             if self.check_centre_match:
                 self.logger.info('Start centre match checking')
-                not_matched = data.loc[data[centre_match_combined_field_name].isna(
-                )]
+                not_matched = data.loc[
+                    data[centre_match_combined_field_name].isna()
+                ]
                 if not not_matched.empty:
                     check_match_data = {
-                        field: not_matched.loc[data[field].notna(), field].drop_duplicates().sort_values().tolist() for field in self.centre_match_checking_fields
+                        field: not_matched.loc[
+                            data[field].notna(), field
+                        ].drop_duplicates().sort_values().tolist()
+                        for field in self.centre_match_checking_fields
                     }
 
                     with open(self.output_folder / f'{self.centre_match_missing_file_name_prefix}_all.json', 'w', encoding='utf-8') as f:
-                        json.dump(check_match_data, f,
-                                  indent='\t', ensure_ascii=False)
+                        json.dump(
+                            check_match_data,
+                            f,
+                            indent='\t',
+                            ensure_ascii=False
+                        )
 
                     for field_name, missing in check_match_data.items():
                         with open(self.output_folder / f'{self.centre_match_missing_file_name_prefix}_{field_name}.txt', 'w', encoding='utf-8') as f:
                             f.write('\n'.join(missing))
 
+                    # NOTE: The pipeline should fail if new names have to be matched
                     self.exitcode = 1
 
                 self.logger.info('Centre match checking finished')
@@ -215,8 +243,8 @@ class Command(PandasCommand):
             matching_data = self.pd.read_excel(
                 self.substance_match_path, sheet_name=self.substance_match_fields, keep_default_na=False, na_values=self.na_values, na_filter=True)
 
-            print(matching_data)
-            raise RuntimeError
+            # print(matching_data)
+            raise NotImplementedError()
 
         if self.cancel_enabled:
             self.logger.info('Start cancel detection')
@@ -228,15 +256,16 @@ class Command(PandasCommand):
             data.loc[query, self.updated_state_meta_field_name] = 'Cancelled'
             self.logger.info('Cancel detection finished')
 
+            # TODO: Extract all matches; useful for creating better regex
             if self.detailed_cancel_fields:
                 self.logger.info('Start adding detailed cancel fields')
 
-                # TODO: Only extracts first match
+                # NOTE: Only extracts first match
                 data[f'{self.study_cancelled_meta_field_name}_extracted_word'] = data['description'].str.extract('|'.join(
                     [fr'({x}\S*\b)' for x in self.study_cancelled_patterns]), flags=re.IGNORECASE).apply(
                         lambda x: '; '.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
 
-                # TODO: Only extracts first matched sentence
+                # NOTE: Only extracts first matched sentence
                 data[f'{self.study_cancelled_meta_field_name}_extracted_sentence'] = data['description'].str.extract('|'.join(
                     [fr'(\b[^.!?]*{x}\S*\b[^.!?]*(?P<end{i}>[.!?]+)?(?(end{i})|$))' for i, x in enumerate(self.study_cancelled_patterns)]),
                     flags=re.IGNORECASE).apply(

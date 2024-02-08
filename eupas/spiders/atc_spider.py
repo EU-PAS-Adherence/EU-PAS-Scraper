@@ -32,6 +32,7 @@ class ATC_Spider(spiders.Spider):
     # URLS and headers
     base_url = 'https://www.whocc.no/atc_ddd_index/'
     query_url = 'https://www.whocc.no/atc_ddd_index/?code={}&showdescription=no'
+    # This regex will extract the atc_code from the url
     atc_regex = re.compile(r'code=(\S+)&')
 
     def __init__(self, progress_logging=False, *args, **kwargs):
@@ -55,32 +56,43 @@ class ATC_Spider(spiders.Spider):
         return spider
 
     def start_requests(self):
+        '''
+        Starts the Spider with a single request to the ATC Index home page.
+        The first site has a different structure and will be parsed different from the rest.
+        '''
         return [http.Request(self.base_url, cb_kwargs={'base_url_page': True})]
 
-    start_print = False
-
     def parse(self, response: http.Response, base_url_page=False):
+        '''
+        Parses all responses and extracts atc_code and atc_value from the <a> Element.
+        It will follow the links to the deepest level allowed by the DEPTH_LIMIT.
+        '''
         if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):
             self.pbar.update()
 
         main = response.xpath('//*[@id="content"]')
         if base_url_page:
             main = main.xpath('./div/div')
-        atc_links = main.xpath('./p/b//a')
-        follow_links = True
 
+        # This list is empty in the last level
+        atc_links = main.xpath('./p/b//a')
+        follow_links = bool(atc_links)
         if not atc_links:
             atc_links = main.xpath('.//table//a')
-            follow_links = False
 
         atc_codes = [
-            self.atc_regex.search(x).group(1) for x in atc_links.xpath('./@href').getall()
+            self.atc_regex.search(link).group(1) for link in atc_links.xpath('./@href').getall()
         ]
 
         atc_values = [
             ''.join(link.xpath('.//text()').getall()) for link in atc_links
         ]
 
+        # This will probably fail if the code breaks after website changes
+        # NOTE: It's possible to check for a regex match in the atc_codes with:
+        #       r"^[A-DGHJLMNPRSV](?:[0-2]\d(?:[A-NRXZ](?:[A-NPRSTVXYZ](?:[0-8]\d)?)?)?)?$"" or less strict
+        #       r"^[A-DGHJLMNPRSV](?:\d{2}(?:[A-NRXZ](?:[A-NPRSTVXYZ](?:\d{2})?)?)?)?$" or less strict
+        #       r"^[A-Z](?:\d{2}(?:[A-Z](?:[A-Z](?:\d{2})?)?)?)?$"
         assert len(atc_codes) == len(atc_values)
 
         for atc, value in zip(atc_codes, atc_values):

@@ -18,6 +18,9 @@ class Command(PandasCommand):
                        'JP18', 'NF', 'Non-JPS', 'prop.INN', 'TM', 'TN', 'USAN', 'USP']
 
     def add_options(self, parser):
+        '''
+        Adds custom options to the base pandas command.
+        '''
         PandasCommand.add_options(self, parser)
         patch = parser.add_argument_group(title="Custom Patching Options")
         patch.add_argument(
@@ -61,6 +64,9 @@ class Command(PandasCommand):
         return "Match substance INN and ATC to correct ATC with the help of KEGG and the WHO ATC Index"
 
     def run(self, args, opts):
+        '''
+        Runs KEGG and ATC Spider to generate a matching spread sheet for the substances.
+        '''
         super().run(args, opts)
         import numpy as np
 

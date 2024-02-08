@@ -1,5 +1,6 @@
 from datetime import datetime
 import logging
+import re
 
 from eupas.commands import PandasCommand
 from scrapy.exceptions import UsageError
@@ -34,6 +35,8 @@ class Command(PandasCommand):
                     'EU RMP category 2 (specific obligation of marketing authorisation)']
 
     max_sheet_name_length = 31
+
+    variables_seperator = '__'
 
     def syntax(self):
         return "[options]"
@@ -195,8 +198,13 @@ class Command(PandasCommand):
 
         funded_by, multiple_funding_sources = get_funding_sources()
 
-        planned_duration = df.loc[df['final_report_date_planed'].notna()
-                                  & df['data_collection_date_planed'].notna(), ['data_collection_date_planed', 'final_report_date_planed']].diff(axis='columns').iloc[:, -1]
+        planned_duration = df.loc[
+            df['final_report_date_planed'].notna(
+            ) & df['data_collection_date_planed'].notna(),
+            ['data_collection_date_planed', 'final_report_date_planed']] \
+            .diff(axis='columns').iloc[:, -1]
+        # NOTE: There are some studies with negative planned_duration
+        planned_duration[planned_duration <= np.timedelta64(0)] = self.pd.NA
 
         def get_quartiles(s, interpolation='linear'):
             one_quart, median, three_quart = s.quantile(
@@ -328,30 +336,32 @@ class Command(PandasCommand):
 
         dummy_without_na_drop_map = {
             'state': 'Finalised',
-            'planned_duration_quartiles': 1,
             'study_type': 'Observational study',
             'collaboration_with_research_network': False,
             'country_type': 'National study',
+            # NOTE: We use the quartiles for multivariate logistic regression
             'number_of_countries_grouped': '3 or more',
             'number_of_countries_quartiles': 1,
-            # 'funded_by': 'Pharmaceutical companies',
+            # 'funded_by': 'Pharmaceutical companies',  # NOTE: Combined Categories
             'multiple_funding_sources': False,
             'medical_conditions': True,
-            'age_population': '18-64 years',  # NOTE: Combined Categories
+            # 'age_population': '18-64 years',  # NOTE: Combined Categories
             'sex_population': 'Male; Female',  # NOTE: Combined Categories
+            # NOTE: We use the quartiles for multivariate logistic regression
             'number_of_subjects_grouped': '100-<500',
             'number_of_subjects_quartiles': 1,
             'uses_established_data_source': False,
             'follow_up': False,
-            # 'scopes': 'Risk assessment',
+            # 'scopes': 'Risk assessment',  # NOTE: Combined Categories
             'primary_outcomes': False,
             'secondary_outcomes': False
         }
 
         dummy_with_na_drop_map = {
+            'planned_duration_quartiles': 1,
             'requested_by_regulator': False,
             'risk_management_plan': 'Not applicable',
-            # 'other_population': str(np.nan),
+            # 'other_population': str(np.nan),  # NOTE: Combined Categories
         }
 
         dummy_drop_map = {
@@ -359,25 +369,24 @@ class Command(PandasCommand):
             **dummy_with_na_drop_map
         }
 
-        prefix_sep = '__'
         dummies = self.pd.concat([
             self.pd.get_dummies(
                 df[dummy_without_na_drop_map.keys()],
-                prefix_sep=prefix_sep,
+                prefix_sep=self.variables_seperator,
                 columns=dummy_without_na_drop_map.keys()
             ),
             self.pd.get_dummies(
                 df[dummy_with_na_drop_map.keys()],
-                prefix_sep=prefix_sep,
+                prefix_sep=self.variables_seperator,
                 columns=dummy_with_na_drop_map.keys(),
-                dummy_na=True
-            )],
-            axis='columns'
-        )
+                dummy_na=True  # NOTE: This somehow renames int values to float values; For example 1 becomes 1.0
+            ).rename(columns=lambda x: re.sub(r'\.0+$', '', x))  # NOTE: Quickfix for renaming; Important for reference-dropping
+        ], axis='columns')
 
         if drop_references:
             columns_to_drop = [
-                col for col in dummies if str(dummy_drop_map[col.split(prefix_sep)[0]]) == col.split(prefix_sep)[-1]
+                col for col in dummies
+                if str(dummy_drop_map[col.split(self.variables_seperator)[0]]) == col.split(self.variables_seperator)[-1]
             ]
 
             dummies.drop(columns=columns_to_drop, inplace=True)
@@ -389,30 +398,52 @@ class Command(PandasCommand):
         variables = dummies.assign(registration_date=df['registration_date'])
         return variables
 
-    def univariate_lr(self, df, y):
+    def run_logit(self, df, y, var_col_map):
         import statsmodels.formula.api as smf
-
-        variables = {col.split('__')[0] for col in df.columns}
-        col_var_map = {
-            v: [col for col in df.columns if col.startswith(v) and '__' in col]
-            for v in variables
-        }
-        col_var_map = {var: cols for var, cols in col_var_map.items() if cols}
-
         results = {}
 
-        for var, cols in col_var_map.items():
+        logging.captureWarnings(True)
+        for var, cols in var_col_map.items():
             escaped_vars = [f'Q("{col}")' for col in cols]
             formula = f'{y} ~ {" + ".join(escaped_vars)}'
             self.logger.info(f'Running: {formula}')
             lr_result = smf.logit(formula, df).fit(
                 maxiter=100,
                 warn_convergence=True,
-                disp=True  # NOTE: Set to false to disable printing convergence messages
+                disp=False  # NOTE: Set to true/false to enable/disable printing convergence messages
             )
             results.setdefault(var, lr_result)
+        logging.captureWarnings(False)
 
         return results
+
+    def univariate_lr(self, df, y):
+
+        variables = sorted({
+            col.split(self.variables_seperator)[0] for col in df.columns
+            if self.variables_seperator in col
+        })
+        var_col_map = {
+            v: [col for col in df.columns if col.startswith(v)]
+            for v in variables
+        }
+        var_col_map = {var: cols for var, cols in var_col_map.items() if cols}
+
+        return self.run_logit(df, y, var_col_map)
+
+    def multivariate_lr(self, df, y):
+        # NOTE: We keep the quartiles instead
+        high_corr_fiels = ['number_of_countries_grouped',
+                           'number_of_subjects_grouped']
+
+        drop_high_corr = [
+            col for col in df.columns if col.split(self.variables_seperator)[0] in high_corr_fiels]
+
+        var_col_map = {
+            'all': df.drop([y, *drop_high_corr], axis='columns').columns
+        }
+
+        return self.run_logit(df, y, var_col_map)
 
     def run(self, args, opts):
         super().run(args, opts)
@@ -533,9 +564,7 @@ class Command(PandasCommand):
                 (categories_past_data_collection,
                  '_past_date_collection'),
                 (categories_two_weeks_past_final_report,
-                 '_two_weeks_past_final_report'),
-                (categories_past_data_collection_without_two_weeks_past_final_report,
-                 '_past_data_collection_without_two_weeks_past_final_report')]:
+                 '_two_weeks_past_final_report')]:
 
             with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_categories_documents{suffix}.xlsx', engine='openpyxl') as writer:
 
@@ -655,6 +684,10 @@ class Command(PandasCommand):
 
                 (self.output_folder / 'univariate_models/summaries' / name / f'{file_name}.csv') \
                     .write_text(model_result.summary().as_csv())
+
+            self.logger.info(
+                'Running multivariate logistic regression and writing output...')
+            results = self.multivariate_lr(variables_y, y_label)
 
         self.logger.info('Generating and writing plots...')
         (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)

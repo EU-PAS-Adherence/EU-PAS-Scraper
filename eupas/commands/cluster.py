@@ -11,13 +11,15 @@ from eupas.items import Study
 
 class Command(PandasCommand):
 
-    # TODO: Improve initial performance
     junk_words = frozenset({
         'pharma', 'pharmaceuticals', 'therapeutics', 'international', 'group',
         'cro', 'kk', 'pvt', 'nhs foundation trust'
     })
 
     def add_options(self, parser):
+        '''
+        Adds custom options to the base pandas command.
+        '''
         PandasCommand.add_options(self, parser)
         group = parser.add_argument_group(title="Custom Grouping Options")
         group.add_argument(
@@ -44,6 +46,9 @@ class Command(PandasCommand):
         return "Cluster specified columns"
 
     def serialize(self, s, casefold=True):
+        '''
+        Serializes and cleans up string for clustering.
+        '''
         def filter_multiple_spaces(s):
             return re.sub(r'\s+', ' ', s)
 
@@ -66,6 +71,9 @@ class Command(PandasCommand):
                 ))).strip()
 
     def run(self, args, opts):
+        '''
+        Clusters the unique values of the columns specified in the arguments.
+        '''
         super().run(args, opts)
 
         import numpy as np
@@ -96,6 +104,7 @@ class Command(PandasCommand):
             for field_name in args
         }
 
+        # TODO: Improve clustering performance
         self.logger.info('Starting affinity propagation...')
         matcher = SequenceMatcher()
         AP = AffinityPropagation(

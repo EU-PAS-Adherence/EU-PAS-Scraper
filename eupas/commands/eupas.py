@@ -1,3 +1,4 @@
+import logging
 import os
 
 from scrapy.commands.crawl import Command as CrawlCommand
@@ -9,6 +10,9 @@ from eupas.spiders.eupas_spider import EU_PAS_Spider, RMP
 class Command(CrawlCommand):
 
     def add_options(self, parser):
+        '''
+        Adds custom options to the base crawl command.
+        '''
         CrawlCommand.add_options(self, parser)
         group = parser.add_argument_group(title="Custom Eupas Options")
         group.add_argument(
@@ -16,10 +20,10 @@ class Command(CrawlCommand):
             "--filter",
             metavar="FILTER_LEVEL",
             default=None,
-            help="filter level (disabled by default)",
+            help="filter level (disabled by default); level can be rmp1, rmp2, etc. or parts of the id",
         )
         group.add_argument(
-            "--debug", action="store_true", help="enable debugging"
+            "--debug", action="store_true", help="enable debugging; disables the tqdm bar and logs in verbose mode"
         )
         group.add_argument(
             "-PDF", "--download-pdf", action="store_true", help="downloads a pdf file for each study detail page"
@@ -49,6 +53,9 @@ class Command(CrawlCommand):
                     'filter_rmp_category', self.get_rmp(opts.filter))
 
     def get_rmp(self, value):
+        '''
+        Returns the correct RMP Enum for a string input.
+        '''
         rmp = value.lower()
         if rmp in ['rmp1', 'riskmanagementplan1', 'risk_management_plan_1']:
             return RMP.EU_RPM_category_1
@@ -67,18 +74,23 @@ class Command(CrawlCommand):
         return "[options]"
 
     def short_desc(self):
-        return "Run the Eupas spider"
+        return "Runs the Eupas spider"
 
     def run(self, args, opts):
+        '''
+        Runs the crawl command with the eupas spider and sets the correct exitcode based on the success of all monitors.
+        '''
         if len(args) > 0:
             raise UsageError(
                 "running 'scrapy eupas' with additional arguments is not supported"
             )
 
+        self.logger = logging.getLogger()
+
         new_args = [EU_PAS_Spider.name]
         super().run(new_args, opts)
 
         monitor_success = os.getenv('MONITOR_SUCCESS') == 'true'
-        print(f'All Monitors Successful: {monitor_success}')
+        self.logger.info(f'All Monitors Successful: {monitor_success}')
         if not monitor_success:
             self.exitcode = 1
