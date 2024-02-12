@@ -1,5 +1,5 @@
 scrapy
-spidermon[monitoring,validation]
+spidermon[monitoring]
 jsonschema[format]
 tqdm
 openpyxl
