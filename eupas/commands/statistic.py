@@ -332,7 +332,7 @@ class Command(PandasCommand):
         return grouped_agg
 
     def create_dummies(self, df, drop_references=True):
-        # import numpy as np
+        import numpy as np
 
         dummy_without_na_drop_map = {
             'state': 'Finalised',
@@ -361,7 +361,7 @@ class Command(PandasCommand):
             'planned_duration_quartiles': 1,
             'requested_by_regulator': False,
             'risk_management_plan': 'Not applicable',
-            # 'other_population': str(np.nan),  # NOTE: Combined Categories
+            'other_population': str(np.nan),  # NOTE: Combined Categories
         }
 
         dummy_drop_map = {
@@ -406,9 +406,10 @@ class Command(PandasCommand):
         for var, cols in var_col_map.items():
             escaped_vars = [f'Q("{col}")' for col in cols]
             formula = f'{y} ~ {" + ".join(escaped_vars)}'
-            self.logger.info(f'Running: {formula}')
+            self.logger.info(f'Running: {y} ~ {" + ".join(cols)}')
             lr_result = smf.logit(formula, df).fit(
-                maxiter=100,
+                method='newton',
+                maxiter=1000,
                 warn_convergence=True,
                 disp=False  # NOTE: Set to true/false to enable/disable printing convergence messages
             )
