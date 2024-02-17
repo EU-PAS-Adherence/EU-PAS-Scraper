@@ -6,7 +6,7 @@ import unicodedata
 from scrapy.exceptions import UsageError
 from eupas.commands import PandasCommand
 
-from eupas.items import Study
+from eupas.items import EU_PAS_Study
 
 
 class Command(PandasCommand):
@@ -84,7 +84,7 @@ class Command(PandasCommand):
                 "running 'scrapy cluster' without additional arguments is not supported"
             )
 
-        if not set(args).issubset(set(Study.fields)):
+        if not set(args).issubset(set(EU_PAS_Study.fields)):
             raise UsageError(
                 "At least one cluster value isn't a valid field name", print_help=False)
 

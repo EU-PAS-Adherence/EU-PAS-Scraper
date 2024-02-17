@@ -18,7 +18,7 @@ import re
 import sqlite3
 from typing import List
 
-from eupas.items import Study
+from eupas.items import EU_PAS_Study
 from itemadapter.adapter import ItemAdapter
 
 
@@ -226,7 +226,8 @@ class SQLiteItemExporter(BaseItemExporter):
 
     def _get_field_meta(self, field_name):
         try:
-            meta = ItemAdapter.get_field_meta_from_class(Study, field_name)
+            meta = ItemAdapter.get_field_meta_from_class(
+                EU_PAS_Study, field_name)
         except KeyError:
             meta = {}
         return meta

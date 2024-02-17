@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 
 from eupas.extensions import SingleJsonItemStringExporter, ItemHistoryComparer
-from eupas.items import Study
+from eupas.items import EU_PAS_Study
 
 
 @pytest.fixture(params=[1234, 999, 'Hello'])
 def simple_item_json_pair(request):
-    study = Study(eu_pas_register_number=f'EUPAS{request.param}')
+    study = EU_PAS_Study(eu_pas_register_number=f'EUPAS{request.param}')
     return {
         'item': study,
         'json': '{\n"eu_pas_register_number": "' + str(request.param) + '"\n}'

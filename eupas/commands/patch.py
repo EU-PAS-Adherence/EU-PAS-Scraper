@@ -6,7 +6,7 @@ import re
 from scrapy.exceptions import UsageError
 
 from eupas.commands import PandasCommand
-from eupas.items import Study
+from eupas.items import EU_PAS_Study
 
 
 class Command(PandasCommand):
@@ -165,7 +165,7 @@ class Command(PandasCommand):
         if self.centre_match_enabled:
             self.logger.info('Start centre matching')
 
-            if not set(self.centre_match_fields).issubset(set(Study.fields)):
+            if not set(self.centre_match_fields).issubset(set(EU_PAS_Study.fields)):
                 raise UsageError(
                     "At least one centre match value isn't a valid field name", print_help=False)
 
@@ -235,7 +235,7 @@ class Command(PandasCommand):
         if self.substance_match_enabled:
             self.logger.info('Start substance matching')
 
-            if not set(self.substance_match_fields).issubset(set(Study.fields)):
+            if not set(self.substance_match_fields).issubset(set(EU_PAS_Study.fields)):
                 raise UsageError(
                     "At least one substance match value isn't a valid field name", print_help=False)
 

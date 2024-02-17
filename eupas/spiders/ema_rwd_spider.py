@@ -13,7 +13,7 @@ import re
 from typing import List, Generator, Union
 import urllib.parse
 
-from eupas.items import Study
+from eupas.items import EMA_RWD_Study
 
 
 class RMP(Enum):
@@ -122,23 +122,23 @@ class EMA_RWD_Spider(spiders.Spider):
             if n_studies == 0:
                 return
 
-            # if last_page_url := response.css('.darwin-list-pages nav li:last-child').xpath('./a/@href').get():
-            #     last_page_number = int(
-            #         self.page_regex.search(last_page_url).group(1)) + 1
-            #     for request in (http.Request(f'{response.url}&page={i}', callback=self.parse) for i in range(1, last_page_number)):
-            #         yield request
+            if last_page_url := response.css('.darwin-list-pages nav li:last-child').xpath('./a/@href').get():
+                last_page_number = int(
+                    self.page_regex.search(last_page_url).group(1)) + 1
+                for request in (http.Request(f'{response.url}&page={i}', callback=self.parse) for i in range(1, last_page_number)):
+                    yield request
 
         entry_urls = response.css(
             '.bcl-listing article').xpath('.//a/@href').getall()
         for request in (http.Request(f'{self.base_url}{url}', callback=self.parse_details) for url in entry_urls):
             yield request
 
-    def parse_details(self, response: http.TextResponse) -> Generator[Union[Study, http.Request], None, None]:
+    def parse_details(self, response: http.TextResponse) -> Generator[Union[EMA_RWD_Study, http.Request], None, None]:
 
         if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):
             self.pbar.update()
 
-        study = Study()
+        study = EMA_RWD_Study()
         study['title'] = response.xpath('.//h1//text()').get()
 
         content = response.css('.content-banner-content-wrapper')
@@ -161,8 +161,8 @@ class EMA_RWD_Spider(spiders.Spider):
             yield http.Request(url=pdf_url, callback=self.save_pdf, cb_kwargs=dict(study=study))
 
         self.parse_admin_details(response=response, study=study)
-        # yield http.Request(url=f'{study["url"]}/methodological-aspects', callback=self.parse_method_details)
-        # yield http.Request(url=f'{study["url"]}/data-management', callback=self.parse_data_details)
+        yield http.Request(url=f'{study["url"]}/methodological-aspects', callback=self.parse_method_details, cb_kwargs=dict(study=study))
+        yield http.Request(url=f'{study["url"]}/data-management', callback=self.parse_data_details, cb_kwargs=dict(study=study))
 
         # if self.custom_settings.get('SAVE_PROTOCOLS_AND_RESULTS'):
         #     if protocol_url:
@@ -172,13 +172,13 @@ class EMA_RWD_Spider(spiders.Spider):
 
         yield study
 
-    def save_pdf(self, response: http.Response, study: Study, suffix='') -> None:
+    def save_pdf(self, response: http.Response, study: EMA_RWD_Study, suffix='') -> None:
         file_path = Path(f"{self.settings.get('OUTPUT_DIRECTORY')}/PDFs/")
         file_path.mkdir(parents=True, exist_ok=True)
         pdf_file = file_path / f"{study['eu_pas_register_number']}{suffix}.pdf"
         pdf_file.write_bytes(response.body)
 
-    def parse_admin_details(self, response: http.TextResponse, study: Study) -> None:
+    def parse_admin_details(self, response: http.TextResponse, study: EMA_RWD_Study) -> None:
         '''
         Parses the details of the first tab: "Administrative Details"
         '''
@@ -189,7 +189,7 @@ class EMA_RWD_Spider(spiders.Spider):
         if study_identification := fieldsets.css('#darwin-study-identification .fieldset-wrapper'):
             study['countries'] = sorted(study_identification.xpath(
                 './/dd')[5].xpath('.//text()').getall())
-            if study_identification.xpath('.//dt')[6].xpath('.//text()').get() == 'Study countries':
+            if 'description' in study_identification.xpath('.//dt')[6].xpath('.//text()').get().lower():
                 study['description'] = study_identification.xpath(
                     './/dd')[6].xpath('.//text()').get()
 
@@ -209,9 +209,9 @@ class EMA_RWD_Spider(spiders.Spider):
             for [[name], *date_entries] in date_table_rows:
                 planned = actual = None
                 for [date_label, date] in date_entries:
-                    if 'planned' in date_label:
+                    if 'planned' in date_label.lower():
                         planned = date
-                    elif 'actual' in date_label:
+                    elif 'actual' in date_label.lower():
                         actual = date
 
                 field_name = None
@@ -236,7 +236,7 @@ class EMA_RWD_Spider(spiders.Spider):
         if study_protocol := fieldsets.css('#darwin-study-protocol .fieldset-wrapper'):
             # NOTE: Merged latest and normal protocol? No option to hide protocol?
             study['protocol_document_url'] = study_protocol.xpath(
-                './/a/@href').getall()
+                './/a/@href').get()
 
         # Regulatory
         if regulatory := fieldsets.css('#darwin-regulatory .fieldset-wrapper'):
@@ -246,13 +246,9 @@ class EMA_RWD_Spider(spiders.Spider):
             if rpn:
                 study['regulatory_procedure_number'] = rpn[0]
 
-        # NOTE: Merged with title
-        # if acronym := details.xpath('./div[3]/span[2]//text()').get():
-        #     study['acronym'] = acronym
-
-        # NOTE: No country type
-        # study['country_type'] = block[0].xpath(
-        #     './/text()[normalize-space()]').get()
+        # NOTE: acronym merged with title
+        # NOTE: country_type was removed
+        # NOTE: collaboration_with_research_network was removed
 
         # Second Block: Research institution and networks
         # block = self._get_block_from_details(details, index=2)
@@ -272,7 +268,7 @@ class EMA_RWD_Spider(spiders.Spider):
 
         # # Is this study being carried out with the collaboration of a research network?
         # block = self._get_block_from_details(details, index=4)
-        # study['collaboration_with_research_network'] = block[0].xpath(
+        # study[''] = block[0].xpath(
         #     './/text()[normalize-space()]').get()
 
         # # Eight block: Sources of funding
@@ -294,30 +290,7 @@ class EMA_RWD_Spider(spiders.Spider):
         # if other_percentage:
         #     study['funding_other_percentage'] = other_percentage
 
-        # # Second Block: Full protocol
-        # latest_protocol_url = latest_result_protocol = None
-        # block = self._get_block_from_details(details, index=2)
-        # num_cells = len(block[0].xpath('./span'))
-        # if num_cells < 4:
-        #     # num cells will be one if there aren't any urls
-        #     # num_cells should be 2, when only one url is expected, but sometimes there is an invisible third cell with an empty url
-        #     if protocol_url := block[0].xpath('./span[2]/a/@href').get():
-        #         study['protocol_document_url'] = protocol_url
-        #         latest_protocol_url = protocol_url
-        #     elif block[0].xpath('./span[1]').re_first("Available when the study ends"):
-        #         study['protocol_document_url'] = "Not public until study ends"
-        # elif num_cells == 4:
-        #     if protocol_url := block[0].xpath('./span[3]/a/@href').get():
-        #         study['protocol_document_url'] = protocol_url
-        #     elif block[0].xpath('./span[3]').re_first("Available when the study ends"):
-        #         study['protocol_document_url'] = "Not public until study ends"
-        #     latest_protocol_url = block[0].xpath('./span[4]/a/@href').get()
-        #     study['latest_protocol_document_url'] = latest_protocol_url
-        # else:
-        #     self.logger.warning(
-        #         'Found unexpected number of protocol document url cells in the following study:\n %s', study['url'])
-
-    def parse_method_details(self, response: http.TextResponse, study: Study) -> None:
+    def parse_method_details(self, response: http.TextResponse, study: EMA_RWD_Study) -> None:
         '''
         Parses the details of the second tab: "Methodological Aspects"
         '''
@@ -329,165 +302,133 @@ class EMA_RWD_Spider(spiders.Spider):
             table = zip(study_type.xpath('.//dt//text()').getall(),
                         study_type.xpath('.//dd//text()').getall())
             for [name, value] in table:
-                if 'study type' in name.lower():
+                if name.lower() == 'study topic':
+                    study['study_topic'] = value
+                elif name.lower() == 'study topic, other':
+                    study['study_topic_other'] = value
+                elif name.lower() == 'study type':
                     study['study_type'] = value
-                    break
+                elif 'further details on the study type' in name.lower():
+                    study['study_type_other'] = value
 
         # Non-interventional study
         if non_interventional_study := fieldsets.css('#darwin-non-interventional-study .fieldset-wrapper'):
             table = zip(non_interventional_study.xpath('.//dt//text()').getall(),
-                        non_interventional_study.xpath('.//dd//text()').getall())
-            for [name, value] in table:
+                        [entry.xpath('.//text()').getall() for entry in non_interventional_study.xpath('.//dd')])
+            for [name, values] in table:
+                first_value = values[0]
                 if 'scope' in name.lower():
-                    # NOTE: This was changed from the old scopes and there is no 'scopes' field!
+                    # NOTE: This was changed from the old scopes and there is no 'primary_scope' field!
                     # NOTE: There is a new field: Clinical trial regulatory scope
-                    study['primary_scope'] = value
+                    study['scopes'] = sorted(values)
                 elif name.lower() == 'non-interventional study design':
-                    # NOTE: This was changed from the old type!
-                    study['study_type'] = value
+                    # NOTE: This was changed from study_design?
+                    study['non_interventional_study_design'] = first_value
+                elif name.lower() == 'non-interventional study design, other':
+                    study['non_interventional_study_design_other'] = first_value
 
         # Study drug and medical condition
         if drugs_and_conditions := fieldsets.css('#darwin-study-drug-and-medical-condition .fieldset-wrapper'):
             table = zip(drugs_and_conditions.xpath('.//dt//text()').getall(),
-                        drugs_and_conditions.xpath('.//dd//text()').getall())
-            for [name, *values] in table:
-                if 'anatomical therapeutic chemical' in name.lower():
-                    study['substance_atc'] = sorted(list(values))
+                        [entry.xpath('.//text()').getall() for entry in drugs_and_conditions.xpath('.//dd')])
+            for [name, values] in table:
+                first_value = values[0]
+                if name.lower() == 'name of medicine':
+                    study['substance_brand_name'] = sorted(list(values[1::2]))
+                elif name.lower() == 'name of medicine, other':
+                    study['substance_brand_name_other'] = first_value
+                elif 'International non-proprietary name' in name.lower():
+                    study['substance_inn'] = sorted(list(values[1::2]))
+                elif 'anatomical therapeutic chemical' in name.lower():
+                    study['substance_atc'] = sorted(list(values[1::2]))
+                elif name.lower() == study['medical_conditions']:
+                    study['medical_conditions'] = sorted(list(values[1::2]))
+                elif 'additional medical condition' in name.lower():
+                    study['additional_medical_conditions'] = first_value
 
-    #     # Second Block: Main objective(s)
-    #     block = self._get_block_from_details(details, index=2)
-    #     block = block.xpath('./self::*[.//b]')
-    #     study['primary_outcomes'] = list(filter(lambda x: x, [
-    #         block[0].xpath('./span[2]/text()').get(),
-    #         block[0].xpath('./following-sibling::*[1][self::br]/following-sibling::div[1]//text()[normalize-space()]').get()]))
-    #     study['secondary_outcomes'] = list(filter(lambda x: x, [
-    #         block[1].xpath('./span[2]/text()').get(),
-    #         block[1].xpath('./following-sibling::*[1][self::br]/following-sibling::div[1]//text()[normalize-space()]').get()]))
+        # Population studied
+        if population_studied := fieldsets.css('#darwin-population-studied .fieldset-wrapper'):
+            table = zip(population_studied.xpath('.//dt//text()').getall(),
+                        [entry.xpath('.//text()').getall() for entry in population_studied.xpath('.//dd')])
+            for [name, values] in table:
+                first_value = values[0]
+                if 'age groups' in name.lower():
+                    # NOTE: This was changed!
+                    study['age_population'] = values
+                elif 'number of subjects' in name.lower():
+                    study['number_of_subjects'] = first_value
+                elif name.lower() == 'special population of interest':
+                    # NOTE: This was changed from other_population!
+                    study['special_population'] = first_value
+                elif name.lower() == 'special population of interest, other':
+                    study['special_population_other'] = first_value
 
-    #     # Third Block: Study design
-    #     block = self._get_block_from_details(details, index=3)
-    #     study['study_design'] = list(map(lambda x: x.strip(), block[1:].xpath(
-    #         './text()[normalize-space()]').getall()))
+        # Study design details
+        # NOTE: Outcomes instead of primary_outcomes or secondary_outcomes
+        if study_design_details := fieldsets.css('#darwin-study-design-details .fieldset-wrapper'):
+            table = zip(study_design_details.xpath('.//dt//text()').getall(),
+                        study_design_details.xpath('.//dd//text()').getall())
+            for [name, value] in table:
+                if name.lower() == 'outcomes':
+                    study['outcomes'] = value
 
-    #     # Fourth Block: Follow-up of patients
-    #     block = self._get_block_from_details(details, index=4)
-    #     study['follow_up'] = block[0].xpath('./span[2]/text()').get()
+        # NOTE: follow_up was removed
+        # NOTE: sex_population was removed
+        # NOTE: uses_established_data_source was removed
 
-    # First Block: Study drug(s) information
-    #     block = self._get_block_from_details(details, index=1)
-    #     substance_atc = set()
-    #     substance_inn = set()
-    #     for row in block:
-    #         spans = row.xpath('./span/text()')
-    #         for i in range(0, len(spans), 2):
-    #             if 'Substance INN' in spans[i].get():
-    #                 substance_inn.add(spans[i + 1].get())
-    #             elif 'Substance class' in spans[i].get():
-    #                 substance_atc.add(spans[i + 1].get())
+#     # Third Block: Study Results
+#     block = self._get_block_from_details(details, index=3)
+#     num_cells = len(block[0].xpath('./span'))
+#     if num_cells < 4:
+#         # num cells will be one if there aren't any urls
+#         # num_cells should be 2, when only one url is expected, but sometimes there is an invisible third cell with an empty url
+#         if result_url := block[0].xpath('./span[2]/a/@href').get():
+#             study['result_document_url'] = result_url
+#             latest_result_protocol = result_url
+#     elif num_cells == 4:
+#         if result_url := block[0].xpath('./span[3]/a/@href').get():
+#             study['result_document_url'] = result_url
+#         latest_result_protocol = block[0].xpath('./span[4]/a/@href').get()
+#         study['latest_result_document_url'] = latest_result_protocol
+#     else:
+#         self.logger.warning(
+#             'Found unexpected number of result document url cells in the following study:\n %s', study['url'])
 
-    #     # NOTE: Have to convert set to list for json and jsonschema to work
-    #     if substance_atc:
-    #         study['substance_atc'] = sorted(list(substance_atc))
-    #     if substance_inn:
-    #         study['substance_inn'] = sorted(list(substance_inn))
+#     if references := list(filter(lambda x: bool(x), block[2:].xpath('translate(.//a/@href, " ", "")').getall())):
+#         study['references'] = references
 
-    #     # Second Block: Medical conditions to be studied
-    #     block = self._get_block_from_details(details, index=2)
-    #     study['medical_conditions'] = [block[0].xpath('./span[2]/text()').get()] + [
-    #         row.xpath('./text()').get('').strip() for row in block[1:] if row.xpath('./text()[normalize-space()]').get()]
+#     # Fourth Block: Other relevant documents
+#     block = self._get_multiblock_from_details(details, index=4, offset=2)
+#     if other_documents := next(block, None):
+#         if other_documents_url := other_documents.xpath('.//a/@href').getall():
+#             study['other_documents_url'] = other_documents_url
+#     else:
+#         self.logger.warning(
+#             'Could not find other document block in the following study:\n %s', study['url'])
 
-    #     # Sometimes there are Additional Medical Condition(s) as seen in:
-    #     # https://www.encepp.eu/encepp/viewResource.htm;?id=48872
-    #     # https://www.encepp.eu/encepp/viewResource.htm;?id=49962
-    #     # https://www.encepp.eu/encepp/viewResource.htm;?id=47071
-    #     if block[-1].xpath('./span[1]').re_first('Additional Medical Condition'):
-    #         # TODO: Check for '\r\n' in other fields too
-    #         study['additional_medical_conditions'] = '\n'.join(
-    #             block[-1].xpath('./span[2]//text()[normalize-space()]').get().splitlines())
+    def parse_data_details(self, response: http.TextResponse, study: EMA_RWD_Study) -> None:
+        '''
+        Parses the details of the third tab: "Data managment"
+        '''
 
-    #     # Third Block: Population under study
-    #     # NOTE: WHENEVER MAP IS USED => Map object has to be turned into list for json and jsonschema to work
-    #     multiblock = self._get_multiblock_from_details(
-    #         details, index=3, filter_element='br', offset=1, every_nth=2)
-    #     if age_block := next(multiblock, None):
-    #         study['age_population'] = list(map(lambda x: x.strip(), age_block.xpath(
-    #             './text()[normalize-space()]').getall()))
+        fieldsets = response.css('fieldset')
 
-    #         if sex_block := next(multiblock, None):
-    #             study['sex_population'] = list(map(lambda x: x.strip(), sex_block.xpath(
-    #                 './text()[normalize-space()]').getall()))
-
-    #             if other_block := next(multiblock, None):
-    #                 study['other_population'] = list(map(lambda x: x.strip(), other_block.xpath(
-    #                     './text()[normalize-space()]').getall()))
-
-    #                 if next(multiblock, None):
-    #                     self.logger.warning(
-    #                         'Found additional population block in the following study:\n %s', study['url'])
-
-    #     # Fourth Block: Number of subjects
-    #     block = self._get_block_from_details(details, index=4)
-    #     study['number_of_subjects'] = int(
-    #         block[0].xpath('./span[2]//text()').get())
-
-    #     # Fifth Block: Source of data
-    #     block = self._get_block_from_details(details, index=5)
-    #     study['uses_established_data_source'] = block[0].xpath(
-    #         './span[2]//text()').get()
-
-    #     multiblock = self._get_multiblock_from_details(
-    #         details, index=5, filter_element='br', offset=1)
-    #     while category := next(multiblock, None):
-    #         if entries := next(multiblock, None):
-    #             if category.re_first('Data sources registered with ENCePP'):
-    #                 study['data_sources_registered_with_encepp'] = list(map(
-    #                     lambda x: x.strip(), entries.xpath('./a/text()[normalize-space()]').getall()))
-    #             elif category.re_first('Data sources not registered with ENCePP'):
-    #                 study['data_sources_not_registered_with_encepp'] = list(map(
-    #                     lambda x: x.strip(), entries.xpath('./text()[normalize-space()]').getall()))
-    #             elif category.re_first('Sources of data'):
-    #                 study['data_source_types'] = entries.xpath(
-    #                     './span//text()[normalize-space()]').getall()
-    #         else:
-    #             self.logger.warning(
-    #                 'Found unexpected empty data source category in the following study:\n %s', study['url'])
-
-    # def parse_data_details(self, response: http.TextResponse, study: Study) -> Union[None, Tuple[str]]:
-    #     '''
-    #     Parses the details of the third tab: "Data managment"
-    #     '''
-
-    #     # Third Block: Study Results
-    #     block = self._get_block_from_details(details, index=3)
-    #     num_cells = len(block[0].xpath('./span'))
-    #     if num_cells < 4:
-    #         # num cells will be one if there aren't any urls
-    #         # num_cells should be 2, when only one url is expected, but sometimes there is an invisible third cell with an empty url
-    #         if result_url := block[0].xpath('./span[2]/a/@href').get():
-    #             study['result_document_url'] = result_url
-    #             latest_result_protocol = result_url
-    #     elif num_cells == 4:
-    #         if result_url := block[0].xpath('./span[3]/a/@href').get():
-    #             study['result_document_url'] = result_url
-    #         latest_result_protocol = block[0].xpath('./span[4]/a/@href').get()
-    #         study['latest_result_document_url'] = latest_result_protocol
-    #     else:
-    #         self.logger.warning(
-    #             'Found unexpected number of result document url cells in the following study:\n %s', study['url'])
-
-    #     if references := list(filter(lambda x: bool(x), block[2:].xpath('translate(.//a/@href, " ", "")').getall())):
-    #         study['references'] = references
-
-    #     # Fourth Block: Other relevant documents
-    #     block = self._get_multiblock_from_details(details, index=4, offset=2)
-    #     if other_documents := next(block, None):
-    #         if other_documents_url := other_documents.xpath('.//a/@href').getall():
-    #             study['other_documents_url'] = other_documents_url
-    #     else:
-    #         self.logger.warning(
-    #             'Could not find other document block in the following study:\n %s', study['url'])
-
-    #     return (latest_protocol_url, latest_result_protocol)
+        # Data sources
+        if data_sources := fieldsets.css('#darwin-data-sources .fieldset-wrapper'):
+            table = zip(data_sources.xpath('.//dt//text()').getall(),
+                        [entry.xpath('.//text()').getall() for entry in data_sources.xpath('.//dd')])
+            for [name, values] in table:
+                first_value = values[0]
+                # NOTE: There is a space in the website right now
+                if name.lower().strip() == 'data source(s)':
+                    study['data_sources_registered_with_encepp'] = sorted(
+                        values)
+                elif name.lower() == 'data sources, if not available in the list above':
+                    study['data_sources_not_registered_with_encepp'] = first_value
+                elif name.lower() == 'data sources (types)':
+                    study['data_source_types'] = sorted(values)
+                elif name.lower() == 'data sources (types), other':
+                    study['data_source_types_other'] = first_value
 
     def idle(self):
         if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):

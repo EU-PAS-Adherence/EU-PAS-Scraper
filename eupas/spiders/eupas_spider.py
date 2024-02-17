@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 from typing import List, Generator, Union, Tuple
 
-from eupas.items import Study
+from eupas.items import EU_PAS_Study
 
 
 class RMP(Enum):
@@ -151,7 +151,7 @@ class EU_PAS_Spider(spiders.Spider):
         url = self.base_url + data_row.xpath('./td[3]//a/@href').get()
         url = self.session_regex.sub('?', url)
 
-        study = Study()
+        study = EU_PAS_Study()
         study['state'] = data_row.xpath('./td[1]//text()').get()
         study['eu_pas_register_number'] = data_row.xpath(
             './td[2]//text()').get()
@@ -171,7 +171,7 @@ class EU_PAS_Spider(spiders.Spider):
             cb_kwargs=dict(study=study)
         )
 
-    def parse_details(self, response: http.TextResponse, study: Study) -> Generator[Union[Study, http.Request], None, None]:
+    def parse_details(self, response: http.TextResponse, study: EU_PAS_Study) -> Generator[Union[EU_PAS_Study, http.Request], None, None]:
         ''' Parses the study details from all four tabs. Each tab will be processed by it's own method.
 
         @url https://www.encepp.eu/encepp/viewResource.htm?id=50574
@@ -206,7 +206,7 @@ class EU_PAS_Spider(spiders.Spider):
 
         yield study
 
-    def save_pdf(self, response: http.Response, study: Study, suffix='') -> None:
+    def save_pdf(self, response: http.Response, study: EU_PAS_Study, suffix='') -> None:
         file_path = Path(f"{self.settings.get('OUTPUT_DIRECTORY')}/PDFs/")
         file_path.mkdir(parents=True, exist_ok=True)
         pdf_file = file_path / f"{study['eu_pas_register_number']}{suffix}.pdf"
@@ -248,7 +248,7 @@ class EU_PAS_Spider(spiders.Spider):
             yield block[start: end]
             start = end + 1
 
-    def parse_admin_details(self, details: selector.Selector, study: Study) -> None:
+    def parse_admin_details(self, details: selector.Selector, study: EU_PAS_Study) -> None:
         '''
         Parses the details of the first tab: "Administrative Details"
         '''
@@ -345,7 +345,7 @@ class EU_PAS_Spider(spiders.Spider):
         if other_percentage:
             study['funding_other_percentage'] = other_percentage
 
-    def parse_target_details(self, details: selector.Selector, study: Study) -> None:
+    def parse_target_details(self, details: selector.Selector, study: EU_PAS_Study) -> None:
         '''
         Parses the details of the second tab: "Targets of the Study"
         '''
@@ -428,7 +428,7 @@ class EU_PAS_Spider(spiders.Spider):
                 self.logger.warning(
                     'Found unexpected empty data source category in the following study:\n %s', study['url'])
 
-    def parse_method_details(self, details: selector.Selector, study: Study) -> None:
+    def parse_method_details(self, details: selector.Selector, study: EU_PAS_Study) -> None:
         '''
         Parses the details of the third tab: "Methodological Aspects"
         '''
@@ -457,7 +457,7 @@ class EU_PAS_Spider(spiders.Spider):
         block = self._get_block_from_details(details, index=4)
         study['follow_up'] = block[0].xpath('./span[2]/text()').get()
 
-    def parse_document_details(self, details: selector.Selector, study: Study) -> Union[None, Tuple[str]]:
+    def parse_document_details(self, details: selector.Selector, study: EU_PAS_Study) -> Union[None, Tuple[str]]:
         '''
         Parses the details of the fourth tab: "Documents"
         '''
