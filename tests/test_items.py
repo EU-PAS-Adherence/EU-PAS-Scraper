@@ -1,7 +1,7 @@
 import pytest
 
 from eupas.items import serialize_date
-from eupas.items import serialize_encepp_document_url
+from eupas.items import serialize_eupas_document_url
 from eupas.items import serialize_id
 from eupas.items import serialize_primary_scope
 
@@ -66,4 +66,5 @@ def test_date_serializer_fails_other_strings(date):
     ('', 'pytest_empty')
 ])
 def test_serialize_encepp_document_url(url, expected):
-    assert serialize_encepp_document_url(url, empty_url_name='pytest_empty') == expected
+    assert serialize_eupas_document_url(
+        url, empty_url_name='pytest_empty') == expected

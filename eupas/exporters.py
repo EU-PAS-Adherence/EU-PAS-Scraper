@@ -18,7 +18,6 @@ import re
 import sqlite3
 from typing import List
 
-from eupas.items import EU_PAS_Study
 from itemadapter.adapter import ItemAdapter
 
 
@@ -180,6 +179,7 @@ class SQLiteItemExporter(BaseItemExporter):
 
         self.regex = re.compile(r"[^a-z,A-Z,0-9,_]")
         self.table_created = False
+        self.type_not_determined = True
 
     def serialize_field(self, field, column_name, value):
         serializer = field.get('serializer', lambda x: x)
@@ -207,6 +207,8 @@ class SQLiteItemExporter(BaseItemExporter):
             return value
 
     def export_item(self, item):
+        if self.type_not_determined:
+            self.item_type = type(item)
 
         fields = sorted(list(self._get_serialized_fields(
             item, default_value=self.default_value, include_empty=True
@@ -227,7 +229,7 @@ class SQLiteItemExporter(BaseItemExporter):
     def _get_field_meta(self, field_name):
         try:
             meta = ItemAdapter.get_field_meta_from_class(
-                EU_PAS_Study, field_name)
+                self.item_type, field_name)
         except KeyError:
             meta = {}
         return meta

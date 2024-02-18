@@ -11,6 +11,8 @@ from datetime import datetime as dt
 from datetime import timezone
 import random
 
+from eupas.items import EU_PAS_Study
+
 ##################################
 #      NON SCRAPY VARIABLES      #
 ##################################
@@ -202,7 +204,9 @@ CLOSESPIDER_ERRORCOUNT = 5
 
 # Enable and configure Spidermon Extension (https://spidermon.readthedocs.io)
 SPIDERMON_ENABLED = True
-SPIDERMON_VALIDATION_SCHEMAS = ['eupas/validators/study_schema.json']
+SPIDERMON_VALIDATION_SCHEMAS = {
+    EU_PAS_Study: 'eupas/validators/eupas_study_schema.json'
+}
 
 # Settings for log_monitors
 SPIDERMON_MAX_WARNINGS = 10

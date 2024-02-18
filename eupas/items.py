@@ -21,13 +21,13 @@ def serialize_date(x: str) -> dt:
 
 
 # TODO: Simply drop empty values?
-def serialize_encepp_document_url(x: str, empty_url_name: str = 'Empty Url') -> str:
+def serialize_eupas_document_url(x: str, empty_url_name: str = 'Empty Url') -> str:
     if not x:
         return empty_url_name
     # Leave absolute paths unchanged (could be external urls)
     if x[0] != '/':
         return x
-    # All relative urls ending with / lead do not lead to a new website
+    # All relative urls ending with / do not lead to a new website
     if x.split(";")[0][-1] == '/':
         return empty_url_name
     return f'https://www.encepp.eu{x.split(";")[0]}'
@@ -35,23 +35,22 @@ def serialize_encepp_document_url(x: str, empty_url_name: str = 'Empty Url') -> 
 
 class EMA_RWD_Study(item.Item):
     url = item.Field(required=True)
-    eu_pas_register_number = item.Field(
-        primary_key=True, required=True, serializer=serialize_id, sql_type=int)
-    state = item.Field(required=True)
-    title = item.Field(required=True)
     update_date = item.Field(required=True, serializer=serialize_date)
     registration_date = item.Field(required=True, serializer=serialize_date)
-    description = item.Field()
-    requested_by_regulator = item.Field(required=True)
-    risk_management_plan = item.Field()
-    regulatory_procedure_number = item.Field()
-    # centre_name = item.Field()
-    # centre_location = item.Field()
-    # centre_name_of_investigator = item.Field()
-    # centre_organisation = item.Field()
-    # collaboration_with_research_network = item.Field(required=True)
+    eu_pas_register_number = item.Field(
+        primary_key=True, required=True, serializer=serialize_id, sql_type=int)
+    title = item.Field(required=True)
     # country_type = item.Field(required=True)
     countries = item.Field(required=True)
+    description = item.Field()
+    state = item.Field(required=True)
+    lead_institution_encepp = item.Field()
+    lead_institution_not_encepp = item.Field()
+    additional_institutions_encepp = item.Field()
+    additional_institutions_not_encepp = item.Field()
+    networks_encepp = item.Field()
+    networks_not_encepp = item.Field()
+    # collaboration_with_research_network = item.Field(required=True)
     funding_contract_date_planed = item.Field(serializer=serialize_date)
     funding_contract_date_actual = item.Field(serializer=serialize_date)
     data_collection_date_planed = item.Field(serializer=serialize_date)
@@ -62,49 +61,40 @@ class EMA_RWD_Study(item.Item):
     iterim_report_date_actual = item.Field(serializer=serialize_date)
     final_report_date_planed = item.Field(serializer=serialize_date)
     final_report_date_actual = item.Field(serializer=serialize_date)
-    # funding_companies_names = item.Field()
-    # funding_companies_percentage = item.Field(sql_type=int)
-    # funding_charities_names = item.Field()
-    # funding_charities_percentage = item.Field(sql_type=int)
-    # funding_government_body_names = item.Field()
-    # funding_government_body_percentage = item.Field(sql_type=int)
-    # funding_research_councils_names = item.Field()
-    # funding_research_councils_percentage = item.Field(sql_type=int)
-    # funding_eu_scheme_names = item.Field()
-    # funding_eu_scheme_percentage = item.Field(sql_type=int)
-    # funding_other_names = item.Field()
-    # funding_other_percentage = item.Field()  # List of ints
-    protocol_document_url = item.Field(
-        serializer=serialize_encepp_document_url)
+    funding_sources = item.Field()
+    funding_details = item.Field()
+    protocol_document_url = item.Field()
+    requested_by_regulator = item.Field(required=True)
+    risk_management_plan = item.Field(required=True)
+    regulatory_procedure_number = item.Field()
     study_topic = item.Field()
     study_topic_other = item.Field()
     study_type = item.Field(required=True)
     study_type_other = item.Field()
-    scopes = item.Field(required=True)
+    non_interventional_scopes = item.Field()
+    non_interventional_scopes_other = item.Field()
     non_interventional_study_design = item.Field()
     non_interventional_study_design_other = item.Field()
     substance_brand_name = item.Field()
     substance_brand_name_other = item.Field()
     substance_atc = item.Field()
     substance_inn = item.Field()
-    medical_conditions = item.Field(required=True)
+    medical_conditions = item.Field()  # NOTE: Not required anymore
     additional_medical_conditions = item.Field()
-    age_population = item.Field(required=True)
+    age_population = item.Field()  # NOTE: Not required anymore
     special_population = item.Field()
     special_population_other = item.Field()
-    number_of_subjects = item.Field(required=True, sql_type=int)
-    # uses_established_data_source = item.Field(required=True)
+    number_of_subjects = item.Field(sql_type=int)  # NOTE: Not required anymore
+    outcomes = item.Field()  # NOTE: Not required anymore
+    result_tables_url = item.Field()
+    result_document_url = item.Field()
+    other_documents_url = item.Field()
+    references = item.Field(sql_name='document_references')
     data_sources_registered_with_encepp = item.Field()
     data_sources_not_registered_with_encepp = item.Field()
-    data_source_types = item.Field(required=True)
+    data_source_types = item.Field()  # NOTE: Not required anymore
     data_source_types_other = item.Field()
-    outcomes = item.Field(required=True)
-    result_document_url = item.Field(serializer=serialize_encepp_document_url)
-    latest_result_document_url = item.Field(
-        serializer=serialize_encepp_document_url)
-    references = item.Field(sql_name='document_references')
-    other_documents_url = item.Field(
-        serializer=lambda x: list(map(serialize_encepp_document_url, x)))
+    # uses_established_data_source = item.Field(required=True)
 
 
 class EU_PAS_Study(item.Item):
@@ -170,12 +160,12 @@ class EU_PAS_Study(item.Item):
     study_design = item.Field(required=True)
     follow_up = item.Field(required=True)
     protocol_document_url = item.Field(
-        serializer=serialize_encepp_document_url)
+        serializer=serialize_eupas_document_url)
     latest_protocol_document_url = item.Field(
-        serializer=serialize_encepp_document_url)
-    result_document_url = item.Field(serializer=serialize_encepp_document_url)
+        serializer=serialize_eupas_document_url)
+    result_document_url = item.Field(serializer=serialize_eupas_document_url)
     latest_result_document_url = item.Field(
-        serializer=serialize_encepp_document_url)
+        serializer=serialize_eupas_document_url)
     references = item.Field(sql_name='document_references')
     other_documents_url = item.Field(
-        serializer=lambda x: list(map(serialize_encepp_document_url, x)))
+        serializer=lambda x: list(map(serialize_eupas_document_url, x)))

@@ -1,0 +1,92 @@
+import logging
+import os
+
+from scrapy.commands.crawl import Command as CrawlCommand
+from scrapy.exceptions import UsageError
+
+from eupas.spiders.ema_rwd_spider import EMA_RWD_Spider, RMP
+
+
+class Command(CrawlCommand):
+
+    def add_options(self, parser):
+        '''
+        Adds custom options to the base crawl command.
+        '''
+        CrawlCommand.add_options(self, parser)
+        group = parser.add_argument_group(title="Custom EMA RWD Options")
+        group.add_argument(
+            "-F",
+            "--filter",
+            metavar="FILTER_LEVEL",
+            default=None,
+            help="filter level (disabled by default); level can be rmp1, rmp2, etc.",
+        )
+        group.add_argument(
+            "--debug", action="store_true", help="enable debugging; disables the tqdm bar and logs in verbose mode"
+        )
+        group.add_argument(
+            "-PDF", "--download-pdf", action="store_true", help="downloads a pdf file for each study detail page"
+        )
+        group.add_argument(
+            "-PR", "--download-protocols-results", action="store_true", help="downloads the latest protocols and results (documents and tables) of every study"
+        )
+
+    def process_options(self, args, opts):
+        CrawlCommand.process_options(self, args, opts)
+        if opts.debug:
+            self.settings.set("LOG_ENABLED", True,
+                              priority=self.settings.maxpriority() + 10)
+            self.settings.set("LOG_LEVEL", "DEBUG",
+                              priority=self.settings.maxpriority() + 10)
+        opts.spargs.setdefault('progress_logging', not opts.debug)
+        opts.spargs.setdefault('filter_studies', bool(opts.filter))
+        opts.spargs.setdefault('save_pdf', opts.download_pdf)
+        opts.spargs.setdefault('save_protocols_and_results',
+                               opts.download_protocols_results)
+        if opts.filter:
+            opts.spargs.setdefault(
+                'filter_rmp_category', self.get_rmp(opts.filter))
+
+    def get_rmp(self, value):
+        '''
+        Returns the correct RMP Enum for a string input.
+        '''
+        rmp = value.lower()
+        if rmp in ['rmp1', 'riskmanagementplan1', 'risk_management_plan_1']:
+            return RMP.EU_RPM_category_1
+        elif rmp in ['rmp2', 'riskmanagementplan2', 'risk_management_plan_2']:
+            return RMP.EU_RPM_category_2
+        elif rmp in ['rmp3', 'riskmanagementplan3', 'risk_management_plan_3']:
+            return RMP.EU_RPM_category_3
+        elif rmp in ["noneu", "non_eu", "noneurmp", "non_eu_rmp", "otherrmp"]:
+            return RMP.non_EU_RPM
+        elif rmp in ["na", "n_a", "n/a", "notapplicable", "not_applicable"]:
+            return RMP.not_applicable
+
+        raise UsageError(f"Received unsuported filter value: {value}")
+
+    def syntax(self):
+        return "[options]"
+
+    def short_desc(self):
+        return "Runs the EMA RWD spider"
+
+    def run(self, args, opts):
+        '''
+        Runs the crawl command with the ema rwd spider and sets the correct exitcode based on the success of all monitors.
+        '''
+        if len(args) > 0:
+            raise UsageError(
+                "running 'scrapy ema_rwd' with additional arguments is not supported"
+            )
+
+        self.logger = logging.getLogger()
+
+        new_args = [EMA_RWD_Spider.name]
+        super().run(new_args, opts)
+
+        monitor_success = os.getenv('MONITOR_SUCCESS') == 'true'
+        self.logger.info(f'All Monitors Successful: {monitor_success}')
+        if not monitor_success:
+            self.exitcode = 1
