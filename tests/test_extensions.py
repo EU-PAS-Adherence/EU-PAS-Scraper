@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 
 from eupas.extensions import SingleJsonItemStringExporter, ItemHistoryComparer
-from eupas.items import EU_PAS_Study
+from eupas.items import EMA_RWD_Study
 
 
 @pytest.fixture(params=[1234, 999, 'Hello'])
 def simple_item_json_pair(request):
-    study = EU_PAS_Study(eu_pas_register_number=f'EUPAS{request.param}')
+    study = EMA_RWD_Study(eu_pas_register_number=f'EUPAS{request.param}')
     return {
         'item': study,
         'json': '{\n"eu_pas_register_number": "' + str(request.param) + '"\n}'
@@ -31,8 +31,9 @@ def json_file(tmp_path: Path):
 
 @pytest.fixture()
 def project_settings(project_settings, json_file: Path):
-    project_settings.set('ITEMHISTORYCOMPARER_JSON_INPUT_PATH',
-                         str(json_file.absolute()), 100)
+    project_settings.set('ITEMHISTORYCOMPARER_JSON_INPUT_PATH', {
+        EMA_RWD_Study: str(json_file.absolute())
+    }, 100)
     project_settings.set(
         'ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH', str(json_file.parent.absolute()), 100)
     project_settings.set('ITEMHISTORYCOMPARER_ENABLED', True, 100)

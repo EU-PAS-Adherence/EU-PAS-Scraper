@@ -5,6 +5,7 @@
 # https://docs.scrapy.org/en/latest/topics/spiders.html
 
 from scrapy import spiders, http, signals
+from scrapy.utils.sitemap import Sitemap
 from tqdm import tqdm
 
 from enum import Enum
@@ -26,8 +27,82 @@ class RMP(Enum):
     not_applicable = 54335
 
 
+# class EMA_RWD_CSV_Spider(spiders.Spider):
+#     '''
+#     This Scrapy Spider extracts study data from the EU PAS Register using the default csv export.
+#     '''
+
+#     # Overriden Spider Settings
+#     # name is used to start a spider with the scrapy cmd crawl or runspider
+#     # The eupas cmd runs this spider directly and simplifies arguments
+#     name = 'ema_rwd_csv'
+#     # custom_settings contains own settings, but can also override the values in settings.py
+#     custom_settings = {
+#         'FILTER_STUDIES': False,
+#     }
+#     # These are the allowed domains. This spider should only follow urls in these domains
+#     allowed_domains = ['catalogues.ema.europa.eu']
+
+#     # URLS and headers
+#     base_url = 'https://catalogues.ema.europa.eu'
+#     query_url = f'{base_url}/search/export-data-study?sort_bef_combine=title_ASC&f[0]=content_type%3Adarwin_study&page=0&_format=csv'
+
+#     # Filter Settings
+#     # This string is used to query the studies
+#     # NOTE: There are other queries which aren't included in this string
+#     template_string = '&f[1]=risk_management_plan_category%3A{risk_management_plan_id}'
+
+#     def __init__(self, filter_studies=False, filter_rmp_category=None, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.custom_settings.update({
+#             'FILTER_STUDIES': filter_studies
+#         })
+#         self.rmp_query_val = filter_rmp_category.value if filter_rmp_category else ''
+
+#     @classmethod
+#     def from_crawler(cls, crawler, *args, **kwargs):
+#         spider = super().from_crawler(crawler, *args, **kwargs)
+#         crawler.signals.connect(spider.idle, signals.spider_idle)
+#         return spider
+
+#     def start_requests(self) -> List[http.Request]:
+#         '''
+#         Starts the scraping process by requesting a query for all (or a filtered subset of all) PAS.
+#         '''
+#         extra_query = ''
+#         if self.custom_settings.get('FILTER_STUDIES'):
+#             extra_query = self.template_string.format(
+#                 risk_management_plan_id=self.rmp_query_val,
+#             )
+#         self.query_url = f'{self.query_url}{extra_query}'
+
+#         self.logger.info('Starting Extraction')
+#         return [http.Request(
+#             url=self.query_url,
+#             callback=self.parse
+#         )]
+
+#     def parse(self, response: http.TextResponse):
+#         print(response.text)
+
+#     def idle(self):
+#         if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):
+#             self.pbar.close()
+
+#     def closed(self, reason: str):
+#         if reason == 'finished':
+#             self.logger.info('Scraping finished successfully.')
+#         elif reason == 'shutdown':
+#             self.logger.info('Scraping was stopped by user.')
+#         else:
+#             self.logger.info(f'Scraping finished with reason: {reason}')
+
+#         self.logger.info(
+#             f'Extraction finished in {self.crawler.stats.get_value("elapsed_time_seconds")} seconds.')
+
+
 # NOTE: This Spider is unnecessary because of the native export capability of the new website.
-#       It is much easier to write a scraper for this new website.
+#       It is also much easier to write a scraper for this new website.
 class EMA_RWD_Spider(spiders.Spider):
     '''
     This Scrapy Spider extracts study data from the EU PAS Register.
@@ -50,12 +125,17 @@ class EMA_RWD_Spider(spiders.Spider):
     # URLS and headers
     base_url = 'https://catalogues.ema.europa.eu'
     query_url = f'{base_url}/search?sort_bef_combine=title_ASC&f[0]=content_type%3Adarwin_study'
+    sitemap_url = f'{base_url}/sitemap.xml'
 
     # Filter Settings
     # This string is used to query the studies
     # NOTE: There are other queries which aren't included in this string
     template_string = '&f[1]=risk_management_plan_category%3A{risk_management_plan_id}'
     page_regex = re.compile(r'page=(\d+)')
+    sitemap_regex = re.compile(rf'{re.escape(base_url)}\/study\/\d+')
+
+    n_studies = 0
+    item_class = EMA_RWD_Study
 
     def clean(self, s: str):
         return s.strip()
@@ -80,61 +160,97 @@ class EMA_RWD_Spider(spiders.Spider):
         '''
         Starts the scraping process by requesting a query for all (or a filtered subset of all) PAS.
         '''
-        extra_query = ''
+        self.logger.info('Starting Extraction')
         if self.custom_settings.get('FILTER_STUDIES'):
             extra_query = self.template_string.format(
                 risk_management_plan_id=self.rmp_query_val,
             )
-        self.query_url = f'{self.query_url}{extra_query}'
+            self.query_url = f'{self.query_url}{extra_query}'
 
-        self.logger.info('Starting Extraction')
-        return [http.Request(
-            url=self.query_url,
-            callback=self.parse,
-            cb_kwargs={
-                'first_page': True
-            }
-        )]
+            return [http.Request(
+                url=self.query_url,
+                callback=self.parse_search,
+                cb_kwargs={
+                    'first_page': True
+                }
+            )]
+        else:
+            return [http.Request(
+                url=self.sitemap_url,
+                callback=self.parse_sitemap,
+                cb_kwargs={
+                    'home_page': True
+                }
+            )]
 
-    def parse(self, response: http.TextResponse, first_page=False) -> Generator[http.Request, None, None]:
+    def parse_search(self, response: http.TextResponse, first_page=False) -> Generator[http.Request, None, None]:
 
         if first_page:
-            n_studies = int(response.css(
+            self.n_studies = int(response.css(
                 '.source-summary-count').xpath('./text()').get('(0)')[1:-1])
-            self.crawler.stats.set_value('item_expected_count', n_studies)
+            self.crawler.stats.set_value('item_expected_count', self.n_studies)
 
-            if n_studies == 0:
+            if self.n_studies == 0:
                 self.logger.warning('No study found.')
             else:
-                self.logger.info(f'{n_studies} studies will be extracted.')
+                self.logger.info(
+                    f'{self.n_studies} studies will be extracted.')
 
             if self.custom_settings.get('PROGRESS_LOGGING'):
                 self.pbar = tqdm(
-                    total=n_studies,
+                    total=self.n_studies,
                     leave=False,
                     desc='Scraping Progress',
                     unit='studies',
                     colour='green',
                 )
 
-            if n_studies == 0:
+            if self.n_studies == 0:
                 return
 
             if last_page_url := response.css('.darwin-list-pages nav li:last-child').xpath('./a/@href').get():
                 last_page_number = int(
                     self.page_regex.search(last_page_url).group(1)) + 1
-                for request in (http.Request(f'{response.url}&page={i}', callback=self.parse) for i in range(1, last_page_number)):
-                    yield request
+                yield from (http.Request(f'{response.url}&page={i}', callback=self.parse_search) for i in range(1, last_page_number))
 
         entry_urls = response.css(
             '.bcl-listing article').xpath('.//a/@href').getall()
-        for request in (http.Request(f'{self.base_url}{url}', callback=self.parse_details) for url in entry_urls):
-            yield request
+        yield from (http.Request(f'{self.base_url}{url}', callback=self.parse) for url in entry_urls)
 
-    def parse_details(self, response: http.TextResponse) -> Generator[http.Request, None, None]:
+    def parse_sitemap(self, response: http.XmlResponse, home_page=False) -> Generator[http.Request, None, None]:
+        urls = [
+            entry['loc']
+            for entry in Sitemap(response.body)
+        ]
+        if home_page:
+            if self.custom_settings.get('PROGRESS_LOGGING'):
+                self.pbar = tqdm(
+                    total=self.n_studies,
+                    leave=False,
+                    desc='Scraping Progress',
+                    unit='studies',
+                    colour='green',
+                )
+            yield from (http.Request(url, callback=self.parse_sitemap) for url in urls)
+        else:
+            filtered_urls = [
+                url for url in urls if self.sitemap_regex.search(url)
+            ]
+            self.n_studies += len(filtered_urls)
+            self.crawler.stats.set_value('item_expected_count', self.n_studies)
 
-        if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):
-            self.pbar.update()
+            if self.n_studies == 0:
+                self.logger.warning('No study found on one sitemap page.')
+            else:
+                self.logger.info(
+                    f'{self.n_studies} studies will be extracted.')
+
+            if self.custom_settings.get('PROGRESS_LOGGING'):
+                self.pbar.total = self.n_studies
+                self.pbar.refresh()
+            yield from (http.Request(url, callback=self.parse) for url in filtered_urls)
+
+    def parse(self, response: http.TextResponse) -> Generator[http.Request, None, None]:
 
         study = EMA_RWD_Study()
         study['title'] = response.xpath('.//h1//text()').get()
@@ -156,11 +272,10 @@ class EMA_RWD_Spider(spiders.Spider):
 
         if self.custom_settings.get('SAVE_PDF'):
             pdf_url = f'{self.base_url}{response.css(".bcl-card-link-set").xpath("./a/@href").get()}'
-            yield http.Request(url=pdf_url, callback=self.save_pdf, cb_kwargs=dict(study=study))
+            yield http.Request(url=pdf_url, callback=self.save_pdf, cb_kwargs=dict(study=study), meta=dict(download_timeout=60))
 
         self.parse_admin_details(response=response, study=study)
-        yield http.Request(url=f'{study["url"]}/methodological-aspects', callback=self.parse_method_details, cb_kwargs=dict(study=study), priority=2)
-        yield http.Request(url=f'{study["url"]}/data-management', callback=self.parse_data_details, cb_kwargs=dict(study=study), priority=1)
+        yield http.Request(url=f'{study["url"]}/methodological-aspects', callback=self.parse_method_details, cb_kwargs=dict(study=study))
 
     def save_pdf(self, response: http.Response, study: EMA_RWD_Study, suffix='') -> None:
         file_path = Path(f"{self.settings.get('OUTPUT_DIRECTORY')}/PDFs/")
@@ -177,11 +292,14 @@ class EMA_RWD_Spider(spiders.Spider):
 
         # Study identification
         if study_identification := fieldsets.css('#darwin-study-identification .fieldset-wrapper'):
+            study['puri'] = study_identification.xpath(
+                './/dd')[0].xpath('.//text()').get()
             study['countries'] = sorted(study_identification.xpath(
                 './/dd')[5].xpath('.//text()').getall())
-            if 'description' in study_identification.xpath('.//dt')[6].xpath('.//text()').get().lower():
-                study['description'] = study_identification.xpath(
-                    './/dd')[6].xpath('.//text()').get()
+            if len(study_identification.xpath('.//dt')) > 6:
+                if 'description' in study_identification.xpath('.//dt')[6].xpath('.//text()').get().lower():
+                    study['description'] = study_identification.xpath(
+                        './/dd')[6].xpath('.//text()').get()
 
         # Research institution and networks
         # NOTE: Centres got major changes on the new website
@@ -191,8 +309,8 @@ class EMA_RWD_Spider(spiders.Spider):
                 study['lead_institution_encepp'] = \
                     lead_org.xpath('.//a//text()').get()
 
-            if lead_org_other := institutions_and_networks.css('*[class$="lead-organisation_o"]'):
-                study['lead_institution_encepp'] = \
+            if lead_org_other := institutions_and_networks.css('*[class$="lead-organisation-o"]'):
+                study['lead_institution_not_encepp'] = \
                     lead_org_other.xpath('./text()').get()
 
             if additional_orgs := institutions_and_networks.css('*[class$="addit-organis"]'):
@@ -207,7 +325,7 @@ class EMA_RWD_Spider(spiders.Spider):
                 study['networks_encepp'] = \
                     networks.xpath('.//a//text()').getall()
 
-            if additional_networks := institutions_and_networks.css('*[class$="network_other"]'):
+            if additional_networks := institutions_and_networks.css('*[class$="network-other"]'):
                 study['networks_not_encepp'] = \
                     additional_networks.xpath('./text()').get()
 
@@ -268,20 +386,25 @@ class EMA_RWD_Spider(spiders.Spider):
 
         # Regulatory
         if regulatory := fieldsets.css('#darwin-regulatory .fieldset-wrapper'):
-            study['requested_by_regulator'], study['risk_management_plan'], *rpn = \
-                regulatory.xpath('.//dd//text()').getall()
-
-            if rpn:
-                study['regulatory_procedure_number'] = rpn[0]
+            values = regulatory.xpath('.//dd//text()').getall()
+            study['requested_by_regulator'] = values[0]
+            table = zip(regulatory.xpath('.//dt//text()')[1:].getall(),
+                        values[1:])
+            for [name, value] in table:
+                if 'risk management plan' in name.lower():
+                    study['risk_management_plan'] = value
+                elif name.lower() == 'regulatory procedure number':
+                    study['regulatory_procedure_number'] = value
 
         # NOTE: acronym merged with title
         # NOTE: country_type was removed
         # NOTE: collaboration_with_research_network was removed
 
-    def parse_method_details(self, response: http.TextResponse, study: EMA_RWD_Study) -> None:
+    def parse_method_details(self, response: http.TextResponse, study: EMA_RWD_Study) -> Generator[http.Request, None, None]:
         '''
         Parses the details of the second tab: "Methodological Aspects"
         '''
+
         fieldsets = response.css('fieldset')
 
         # Study type
@@ -314,7 +437,7 @@ class EMA_RWD_Spider(spiders.Spider):
                     study['non_interventional_scopes_other'] = first_value
                 elif name.lower() == 'non-interventional study design':
                     # NOTE: This was changed from study_design?
-                    study['non_interventional_study_design'] = first_value
+                    study['non_interventional_study_design'] = sorted(values)
                 elif name.lower() == 'non-interventional study design, other':
                     study['non_interventional_study_design_other'] = first_value
 
@@ -328,7 +451,7 @@ class EMA_RWD_Spider(spiders.Spider):
                     study['substance_brand_name'] = sorted(list(values[1::2]))
                 elif name.lower() == 'name of medicine, other':
                     study['substance_brand_name_other'] = first_value
-                elif 'International non-proprietary name' in name.lower():
+                elif 'international non-proprietary name' in name.lower():
                     study['substance_inn'] = sorted(list(values[1::2]))
                 elif 'anatomical therapeutic chemical' in name.lower():
                     study['substance_atc'] = sorted(list(values[1::2]))
@@ -345,12 +468,12 @@ class EMA_RWD_Spider(spiders.Spider):
                 first_value = values[0]
                 if 'age groups' in name.lower():
                     # NOTE: This was changed!
-                    study['age_population'] = values
+                    study['age_population'] = sorted(values)
                 elif 'number of subjects' in name.lower():
-                    study['number_of_subjects'] = first_value
+                    study['number_of_subjects'] = int(first_value)
                 elif name.lower() == 'special population of interest':
                     # NOTE: This was changed from other_population!
-                    study['special_population'] = first_value
+                    study['special_population'] = sorted(values)
                 elif name.lower() == 'special population of interest, other':
                     study['special_population_other'] = first_value
 
@@ -384,11 +507,15 @@ class EMA_RWD_Spider(spiders.Spider):
         # NOTE: follow_up was removed
         # NOTE: sex_population was removed
         # NOTE: uses_established_data_source was removed
+        yield http.Request(url=f'{study["url"]}/data-management', callback=self.parse_data_details, cb_kwargs=dict(study=study))
 
     def parse_data_details(self, response: http.TextResponse, study: EMA_RWD_Study) -> Generator[Union[EMA_RWD_Study, http.Request], None, None]:
         '''
         Parses the details of the third tab: "Data managment"
         '''
+
+        if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):
+            self.pbar.update()
 
         fieldsets = response.css('fieldset')
 
@@ -409,13 +536,23 @@ class EMA_RWD_Spider(spiders.Spider):
                 elif name.lower() == 'data sources (types), other':
                     study['data_source_types_other'] = first_value
 
+        # Data quality specifications
+        if data_sources := fieldsets.css('#darwin-data-quality-specifications .fieldset-wrapper'):
+            study['check_conformance'], study['check_completeness'], study['check_stability'], study['check_logical_consistency'] = \
+                data_sources.xpath('.//dd//text()').getall()
+
+        # Data characterisation
+        if data_characterisation := fieldsets.css('#darwin-data-characterisation .fieldset-wrapper'):
+            study['conducted_data_characterisation'] = \
+                data_characterisation.xpath('.//dd//text()').get()
+
         if self.custom_settings.get('SAVE_PROTOCOLS_AND_RESULTS'):
-            if protocol_url := study['protocol_document_url']:
-                yield http.Request(url=f'{self.base_url}{protocol_url}', callback=self.save_pdf, cb_kwargs=dict(study=study, suffix='_latest_protocols'))
-            if result_tables := study['result_tables_url']:
-                yield http.Request(url=f'{self.base_url}{result_tables}', callback=self.save_pdf, cb_kwargs=dict(study=study, suffix='_latest_result_tables'))
-            if result_url := study['result_document_url']:
-                yield http.Request(url=f'{self.base_url}{result_url}', callback=self.save_pdf, cb_kwargs=dict(study=study, suffix='_latest_results'))
+            if protocol_url := study.get('protocol_document_url'):
+                yield http.Request(url=protocol_url, callback=self.save_pdf, cb_kwargs=dict(study=study, suffix='_latest_protocols'), meta=dict(download_timeout=60))
+            if result_tables := study.get('result_tables_url'):
+                yield http.Request(url=result_tables, callback=self.save_pdf, cb_kwargs=dict(study=study, suffix='_latest_result_tables'), meta=dict(download_timeout=60))
+            if result_url := study.get('result_document_url'):
+                yield http.Request(url=result_url, callback=self.save_pdf, cb_kwargs=dict(study=study, suffix='_latest_results'), meta=dict(download_timeout=60))
 
         yield study
 

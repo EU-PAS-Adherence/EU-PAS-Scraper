@@ -68,6 +68,7 @@ class EU_PAS_Spider(spiders.Spider):
     # RegEx is used to remove the sessionid in the urls
     # NOTE: Use proxy rotation for better evasion
     session_regex = re.compile(r'jsessionid=.+\?')
+    item_class = EU_PAS_Study
 
     def __init__(self, progress_logging=False, filter_studies=False, filter_rmp_category=None, filter_eupas_id=None, save_pdf=False, save_protocols_and_results=False, *args, **kwargs):
         super().__init__(*args, **kwargs)

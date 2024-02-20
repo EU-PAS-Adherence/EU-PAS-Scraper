@@ -35,6 +35,7 @@ def serialize_eupas_document_url(x: str, empty_url_name: str = 'Empty Url') -> s
 
 class EMA_RWD_Study(item.Item):
     url = item.Field(required=True)
+    puri = item.Field(required=True)
     update_date = item.Field(required=True, serializer=serialize_date)
     registration_date = item.Field(required=True, serializer=serialize_date)
     eu_pas_register_number = item.Field(
@@ -43,7 +44,7 @@ class EMA_RWD_Study(item.Item):
     # country_type = item.Field(required=True)
     countries = item.Field(required=True)
     description = item.Field()
-    state = item.Field(required=True)
+    state = item.Field()
     lead_institution_encepp = item.Field()
     lead_institution_not_encepp = item.Field()
     additional_institutions_encepp = item.Field()
@@ -65,7 +66,7 @@ class EMA_RWD_Study(item.Item):
     funding_details = item.Field()
     protocol_document_url = item.Field()
     requested_by_regulator = item.Field(required=True)
-    risk_management_plan = item.Field(required=True)
+    risk_management_plan = item.Field()
     regulatory_procedure_number = item.Field()
     study_topic = item.Field()
     study_topic_other = item.Field()
@@ -95,6 +96,11 @@ class EMA_RWD_Study(item.Item):
     data_source_types = item.Field()  # NOTE: Not required anymore
     data_source_types_other = item.Field()
     # uses_established_data_source = item.Field(required=True)
+    check_conformance = item.Field(required=True)
+    check_completeness = item.Field(required=True)
+    check_stability = item.Field(required=True)
+    check_logical_consistency = item.Field(required=True)
+    conducted_data_characterisation = item.Field(required=True)
 
 
 class EU_PAS_Study(item.Item):

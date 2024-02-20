@@ -1,0 +1,508 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://example.com/study.schema.json",
+    "title": "Study",
+    "description": "A study in the HMA-EMA Catalogue of real-world data studies",
+    "type": "object",
+    "required": [
+        "url",
+        "puri",
+        "update_date",
+        "registration_date",
+        "eu_pas_register_number",
+        "title",
+        "countries",
+        "requested_by_regulator",
+        "study_type"
+    ],
+    "properties": {
+        "url": {
+            "type": "string",
+            "pattern": "^https://catalogues\\.ema\\.europa\\.eu/node/\\d{4,6}$"
+        },
+        "puri": {
+            "type": "string",
+            "pattern": "^https://redirect\\.ema\\.europa\\.eu/resource/\\d{4,6}$"
+        },
+        "update_date": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "registration_date": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "eu_pas_register_number": {
+            "type": "string",
+            "pattern": "^EUPAS\\d{4,6}$"
+        },
+        "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+        },
+        "countries": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 4,
+                "maxLength": 44
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+        },
+        "state": {
+            "type": "string",
+            "enum": [
+                "Finalised",
+                "Ongoing",
+                "Planned"
+            ]
+        },
+        "lead_institution_encepp": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250
+        },
+        "lead_institution_not_encepp": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250
+        },
+        "additional_institutions_encepp": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 250
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "additional_institutions_not_encepp": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+        },
+        "networks_encepp": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 250
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "networks_not_encepp": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+        },
+        "funding_contract_date_planed": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "funding_contract_date_actual": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "data_collection_date_planed": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "data_collection_date_actual": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "data_analysis_date_planed": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "data_analysis_date_actual": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "iterim_report_date_planed": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "iterim_report_date_actual": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "final_report_date_planed": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "final_report_date_actual": {
+            "type": "string",
+            "pattern": "^(?:(?:31(\\/)(?:0?[13578]|1[02]))\\1|(?:(?:29|30)(\\/)(?:0?[13-9]|1[0-2])\\2))(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$|^(?:29(\\/)0?2\\3(?:(?:(?:1[6-9]|[2-9]\\d)?(?:0[48]|[2468][048]|[13579][26])|(?:(?:16|[2468][048]|[3579][26])00))))$|^(?:0?[1-9]|1\\d|2[0-8])(\\/)(?:(?:0?[1-9])|(?:1[0-2]))\\4(?:(?:1[6-9]|[2-9]\\d)?\\d{2})$",
+            "minLength": 10,
+            "maxLength": 10
+        },
+        "funding_sources": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "EMA",
+                    "EU institutional research programme",
+                    "National competent authority (NCAs)",
+                    "No external funding",
+                    "Non for-profit organisations (e.g.,charity)",
+                    "Non-EU institutional research programme",
+                    "Other public funding (e.g., hospital or university)",
+                    "Pharmaceutical company and other private sector ",
+                    "Other"
+                ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "funding_details": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250
+        },
+        "protocol_document_url": {
+            "type": "string",
+            "pattern": "^https://catalogues\\.ema\\.europa\\.eu/sites/default/files/document_files/"
+        },
+        "requested_by_regulator": {
+            "type": "string",
+            "enum": [
+                "Yes",
+                "No",
+                "Unknown"
+            ]
+        },
+        "risk_management_plan": {
+            "type": "string",
+            "enum": [
+                "EU RMP category 1 (imposed as condition of marketing authorisation)",
+                "EU RMP category 2 (specific obligation of marketing authorisation)",
+                "EU RMP category 3 (required)",
+                "Non-EU RMP only",
+                "Not applicable"
+            ]
+        },
+        "regulatory_procedure_number": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+        },
+        "study_type": {
+            "type": "string",
+            "enum": [
+                "Clinical trial",
+                "Non-interventional study",
+                "Not applicable"
+            ]
+        },
+        "study_topic_other": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250
+        },
+        "non_interventional_scopes": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "Assessment of risk minimisation measure implementation or effectiveness", 
+                    "Disease epidemiology",
+                    "Drug utilisation",
+                    "Effectiveness study (incl. comparative)",
+                    "Feasibility analysis",
+                    "Healthcare resource utilisation",
+                    "Hypothesis generation (including signal detection)",
+                    "Method development or testing",
+                    "Patient reported outcomes",
+                    "Safety study (incl. comparative)",
+                    "Scoping review (including literature review)",
+                    "Validation of study variables (exposure outcome covariate)",
+                    "Other"
+                ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "non_interventional_scopes_other": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250
+        },
+        "non_interventional_study_design": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "Case-control",
+                    "Case-only",
+                    "Cluster design",
+                    "Cohort",
+                    "Cross-sectional",
+                    "Ecological",
+                    "Systematic review and meta-analysis",
+                    "Other"
+                ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "non_interventional_study_design_other": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250
+        },
+        "substance_brand_name": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "substance_brand_name_other": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250
+        },
+        "substance_atc": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "substance_inn": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "medical_conditions": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "additional_medical_conditions": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+        },
+        "age_population": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "Adolescents",
+                    "Adolescents (12 to < 18 years)",
+                    "Adult animal",
+                    "Adults",
+                    "Adults (18 to < 46 years)",
+                    "Adults (46 to < 65 years)",
+                    "Adults (65 to < 75 years)",
+                    "Adults (75 to < 85 years)",
+                    "Adults (85 years and over)",
+                    "Adults and elderly",
+                    "All",
+                    "Children",
+                    "Children (2 to < 12 years)",
+                    "Egg",
+                    "Elderly",
+                    "Elderly (≥ 65 years)",
+                    "Embryonated egg",
+                    "In utero",
+                    "Infants and toddlers",
+                    "Infants and toddlers (28 days – 23 months)",
+                    "Neonate",
+                    "Paediatric Population",
+                    "Prepubertal children",
+                    "Preterm newborn infants",
+                    "Preterm newborn infants (0 – 27 days)",
+                    "Pubertal and postpubertal adolescents",
+                    "Term newborn infants",
+                    "Term newborn infants (0 – 27 days)",
+                    "Young animal",
+                    "Young animal/Newborn"
+                ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "special_population": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "Frail population",
+                    "Hepatic impaired",
+                    "Immunocompromised",
+                    "Nursing women",
+                    "Other",
+                    "Pregnant women",
+                    "Renal impaired",
+                    "Women of childbearing potential not using contraception",
+                    "Women of childbearing potential using contraception"
+                ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "special_population_other": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+        },
+        "number_of_subjects": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99999999
+        },
+        "outcomes": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+        },
+        "result_tables_url": {
+            "type": "string",
+            "pattern": "^https://catalogues\\.ema\\.europa\\.eu/sites/default/files/document_files/"
+        },
+        "result_document_url": {
+            "type": "string",
+            "pattern": "^https://catalogues\\.ema\\.europa\\.eu/sites/default/files/document_files/"
+        },
+        "other_documents_url": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "oneOf": [
+                    {
+                        "pattern": "^https://catalogues\\.ema\\.europa\\.eu/sites/default/files/document_files/"
+                    },
+                    {
+                        "pattern": "^https://catalogues\\.ema\\.europa\\.eu/system/files/"
+                    }
+                ]
+            },
+            "minItems": 1
+        },
+        "references": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "pattern": "^(http|https)://"
+            },
+            "minItems": 1
+        },
+        "data_sources_registered_with_encepp": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "data_sources_not_registered_with_encepp": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+        },
+        "data_source_types": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 400
+            },
+            "minItems": 1,
+            "uniqueItems": true
+        },
+        "data_source_types_other": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+        },
+        "check_conformance": {
+            "type": "string",
+            "enum": [
+                "Yes",
+                "No",
+                "Unknown"
+            ]
+        },
+        "check_completeness": {
+            "type": "string",
+            "enum": [
+                "Yes",
+                "No",
+                "Unknown"
+            ]
+        },
+        "check_stability": {
+            "type": "string",
+            "enum": [
+                "Yes",
+                "No",
+                "Unknown"
+            ]
+        },
+        "check_logical_consistency": {
+            "type": "string",
+            "enum": [
+                "Yes",
+                "No",
+                "Unknown"
+            ]
+        },
+        "conducted_data_characterisation": {
+            "type": "string",
+            "enum": [
+                "Yes",
+                "No",
+                "Not applicable",
+                "Unknown"
+            ]
+        }
+    }
+}

@@ -11,7 +11,7 @@ from datetime import datetime as dt
 from datetime import timezone
 import random
 
-from eupas.items import EU_PAS_Study
+from eupas.items import EU_PAS_Study, EMA_RWD_Study
 
 ##################################
 #      NON SCRAPY VARIABLES      #
@@ -77,13 +77,13 @@ CONCURRENT_REQUESTS = 16
 # Configure a delay for requests for the same website (default: 0)
 # See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
 # See also autothrottle settings and docs
-DOWNLOAD_DELAY = 0
+DOWNLOAD_DELAY = 0.25
 # If enabled, Scrapy will wait a random amount of time
 # between 0.5 * DOWNLOAD_DELAY and 1.5 * DOWNLOAD_DELAY
 # while fetching requests from the same website (enabled by default)
 RANDOMIZE_DOWNLOAD_DELAY = True
 # The download delay setting will honor only one of:
-CONCURRENT_REQUESTS_PER_DOMAIN = 12
+CONCURRENT_REQUESTS_PER_DOMAIN = 16
 # CONCURRENT_REQUESTS_PER_IP = 16
 ##################################
 
@@ -129,7 +129,7 @@ ITEM_PIPELINES = {
 ##################################
 #       SPIDER MIDDLEWARE        #
 ##################################
-DEPTH_LIMIT = 2
+DEPTH_LIMIT = 10
 
 REFERRER_ENABLED = True
 ##################################
@@ -186,16 +186,16 @@ DOWNLOADER_STATS = True
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
-AUTOTHROTTLE_ENABLED = True
+AUTOTHROTTLE_ENABLED = False
 # The initial download delay
 AUTOTHROTTLE_START_DELAY = 1.0
 # The maximum download delay to be set in case of high latencies
-AUTOTHROTTLE_MAX_DELAY = 10.0
+AUTOTHROTTLE_MAX_DELAY = 2.5
 # The average number of requests Scrapy should be sending in parallel to
 # each remote server
 # AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
 # Enable showing throttling stats for every response received:
-# AUTOTHROTTLE_DEBUG = False
+# AUTOTHROTTLE_DEBUG = True
 
 # CloseSpider Extension
 CLOSESPIDER_TIMEOUT = 2 * 60 * 60
@@ -205,7 +205,8 @@ CLOSESPIDER_ERRORCOUNT = 5
 # Enable and configure Spidermon Extension (https://spidermon.readthedocs.io)
 SPIDERMON_ENABLED = True
 SPIDERMON_VALIDATION_SCHEMAS = {
-    EU_PAS_Study: 'eupas/validators/eupas_study_schema.json'
+    EU_PAS_Study: 'eupas/validators/eu_pas_study_schema.json',
+    EMA_RWD_Study: 'eupas/validators/ema_rwd_study_schema.json'
 }
 
 # Settings for log_monitors
@@ -264,7 +265,31 @@ SPIDERMON_REPORT_FILENAME = f'{OUTPUT_DIRECTORY}/report.html'
 
 # Custom ITEMCOMPARER Extension
 ITEMHISTORYCOMPARER_ENABLED = True
-ITEMHISTORYCOMPARER_JSON_INPUT_PATH = 'compare.json'
+ITEMHISTORYCOMPARER_JSON_INPUT_PATH = {
+    EU_PAS_Study: 'compare/eu_pas.json',
+    EMA_RWD_Study: 'compare/ema_rwd.json'
+}
+# NOTE: Updates without date changes are excepted in these fields. These fields are linked to
+#       other resources which can be updated independently.
+# NOTE: other_documents_url could be changed with empty urls witout date changes in the old registry too
+ITEMHISTORYCOMPARER_EXCEPTED_FIELDS = {
+    EU_PAS_Study: {
+        'centre_name_of_investigator',
+        'data_sources_registered_with_encepp',
+        'other_documents_url'
+    }
+}
+# There was one study in the EU PAS Register with duplicate entries and two different titles in the search results
+# The Dupefilter dropped one of these entries randomly so the entry varied with each run
+# NOTE: This can not happen with the new database, because status, eu_pas_register_number, title and update_date are extracted from the details page
+ITEMHISTORYCOMPARER_DUPLICATE_EXCEPTED_FIELDS = {
+    EU_PAS_Study: {
+        # 'status',
+        # 'eu_pas_register_number',
+        'title',
+        # 'update_date'
+    }
+}
 ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH = f'{OUTPUT_DIRECTORY}/updates.json'
 ##################################
 

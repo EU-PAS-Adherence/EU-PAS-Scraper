@@ -26,34 +26,17 @@ class ItemHistoryComparer:
     duplicate_fields_key = '$DUPLICATE_SEARCH_ENTRY'
     only_excepted_fields_key = '$ONLY_EXCEPTED_FIELDS_CHANGED'
 
-    # There is currently only one study with duplicate entries with two different titles in the search results
-    # The Dupefilter will drop one of these entries, but the chosen entry varies with each run
-    # TODO: Can be fixed and avoided by extracting the status, eu_pas_register_number, title and update_date from the details page
-    # The other fields could also be affected, but not at this moment
-    # CAVE: Don't add other fields to this set if they aren't shown in the search results
-    duplicate_allowed_changed_fields = {
-        # 'status',
-        # 'eu_pas_register_number',
-        'title',
-        # 'update_date',
-    }
-
-    # NOTE: Updates without date changes are excepted in these fields. These fields are linked to
-    # other sites which can be updated independently.
-    # NOTE: other_documents_url can be changed with empty urls witout date changes too
-    excepted_fields = {
-        'centre_name_of_investigator',
-        'data_sources_registered_with_encepp',
-        'other_documents_url'
-    }
-
     # NOTE: If the meta field pipeline is used: all meta field names get ignored
-    def __init__(self, file_path, output_path, crawler):
+    def __init__(self, file_path_dict, output_path, excepted_fields_dict, duplicate_excepted_fields_dict, crawler):
         self.exporter = SingleJsonItemStringExporter()
-        with open(file_path, 'r') as f:
-            self.studies = json.load(f)
         self.updates = []
+        self.studies = {}
+        self.excepted_fields = set()
+        self.duplicate_excepted_fields = set()
+        self.file_path_dict = file_path_dict
         self.output_path = output_path
+        self.excepted_fields_dict = excepted_fields_dict
+        self.duplicate_excepted_fields_dict = duplicate_excepted_fields_dict
         self.crawler = crawler
 
     @classmethod
@@ -63,18 +46,38 @@ class ItemHistoryComparer:
         if not crawler.settings.getbool('ITEMHISTORYCOMPARER_ENABLED'):
             raise NotConfigured
 
-        file_path = crawler.settings.get('ITEMHISTORYCOMPARER_JSON_INPUT_PATH')
+        file_path_dict = crawler.settings.get(
+            'ITEMHISTORYCOMPARER_JSON_INPUT_PATH')
         output_path = crawler.settings.get(
             'ITEMHISTORYCOMPARER_JSON_OUTPUT_PATH')
+        excepted_fields_dict = crawler.settings.get(
+            'ITEMHISTORYCOMPARER_EXCEPTED_FIELDS')
+        duplicate_excepted_fields_dict = crawler.settings.get(
+            'ITEMHISTORYCOMPARER_DUPLICATE_EXCEPTED_FIELDS')
 
         # instantiate the extension object
-        ext = cls(file_path, output_path, crawler)
+        ext = cls(file_path_dict, output_path, excepted_fields_dict,
+                  duplicate_excepted_fields_dict, crawler)
 
         # connect the extension object to signals
+        crawler.signals.connect(
+            ext.spider_opened, signal=signals.spider_opened)
         crawler.signals.connect(ext.spider_idle, signal=signals.spider_idle)
         crawler.signals.connect(ext.item_scraped, signal=signals.item_scraped)
 
         return ext
+
+    def spider_opened(self, spider):
+        item_class = getattr(spider, 'item_class', None)
+        if file_path := self.file_path_dict.get(item_class):
+            with open(file_path, 'rt') as f:
+                self.studies = json.load(f)
+
+        if excepted := self.excepted_fields_dict.get(item_class):
+            self.excepted_fields = excepted
+
+        if duplicate_excepted := self.duplicate_excepted_fields_dict.get(item_class):
+            self.duplicate_excepted_fields = duplicate_excepted
 
     def spider_idle(self, spider):
         if self.updates:
@@ -88,29 +91,30 @@ class ItemHistoryComparer:
         return map(lambda x: (x[0], tuple(x[1]) if isinstance(x[1], list) else x[1]), item.items())
 
     def item_scraped(self, item, spider):
-        new_study = json.loads(self.exporter.export_item(item))
+        new_entry = json.loads(self.exporter.export_item(item))
 
-        old_studies = list(filter(
-            lambda x: x['eu_pas_register_number'] == new_study['eu_pas_register_number'], self.studies))
-        if not old_studies:
+        old_entries = list(filter(
+            lambda x: x['eu_pas_register_number'] == new_entry['eu_pas_register_number'], self.studies))
+
+        if not old_entries:
             self.crawler.stats.inc_value(
                 'item_history_comparer/item_with_new_register_number_count')
             self.crawler.stats.inc_value(
-                f'item_history_comparer/item_with_new_register_number_count/eupas_{new_study["eu_pas_register_number"]}')
+                f'item_history_comparer/item_with_new_register_number_count/eupas_{new_entry["eu_pas_register_number"]}')
             return
-        elif len(old_studies) > 1:
+        elif len(old_entries) > 1:
             raise NotSupported
 
-        old_study = old_studies[0]
+        old_entry = old_entries[0]
 
         duplicate = self.crawler.stats.get_value(
-            f'dupefilter/filtered/search_entries/eupas_{new_study["eu_pas_register_number"]}', 0) > 0
+            f'dupefilter/filtered/search_entries/eupas_{new_entry["eu_pas_register_number"]}', 0) > 0
 
-        difference = frozenset(self.tuplify(new_study)) - \
-            frozenset(self.tuplify(old_study))
+        difference = frozenset(self.tuplify(new_entry)) - \
+            frozenset(self.tuplify(old_entry))
         updated_fields = {d[0] for d in difference}
-        deleted_fields = list(frozenset(old_study.keys()) -
-                              frozenset(new_study.keys()))
+        deleted_fields = list(frozenset(old_entry.keys()) -
+                              frozenset(new_entry.keys()))
 
         changes_dict = dict(difference)
         only_excepted_fields = False
@@ -131,7 +135,7 @@ class ItemHistoryComparer:
                     only_excepted_fields = True
                     self.crawler.stats.inc_value(
                         'item_history_comparer/updated_item_without_changed_date_count/only_excepted_fields')
-                if duplicate and updated_fields.issubset(self.duplicate_allowed_changed_fields):
+                if duplicate and updated_fields.issubset(self.duplicate_excepted_fields):
                     self.crawler.stats.inc_value(
                         'item_history_comparer/updated_item_without_changed_date_count/duplicate_related')
                 changes_dict.setdefault(self.changed_date_key, False)
@@ -140,8 +144,8 @@ class ItemHistoryComparer:
                 self.only_excepted_fields_key, only_excepted_fields)
             changes_dict.setdefault(self.duplicate_fields_key, duplicate)
             changes_dict.setdefault(
-                self.changed_eupas_key, new_study["eu_pas_register_number"])
-            changes_dict.setdefault(self.changed_url_key, new_study["url"])
+                self.changed_eupas_key, new_entry["eu_pas_register_number"])
+            changes_dict.setdefault(self.changed_url_key, new_entry["url"])
             changes_dict.setdefault(
                 self.deleted_fields_key, deleted_fields or None)
             self.updates.append(changes_dict)
