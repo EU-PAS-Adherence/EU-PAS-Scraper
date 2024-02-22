@@ -63,7 +63,7 @@ USER_AGENT = random_ua()
 ##################################
 #              PROXY             #
 ##################################
-# TODO: This is working right now, but ip rotations might be needed later.
+# NOTE: This is working right now, but ip rotations might be needed later.
 ##################################
 
 ##################################
@@ -77,7 +77,7 @@ CONCURRENT_REQUESTS = 16
 # Configure a delay for requests for the same website (default: 0)
 # See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
 # See also autothrottle settings and docs
-DOWNLOAD_DELAY = 0.25
+DOWNLOAD_DELAY = 0.2
 # If enabled, Scrapy will wait a random amount of time
 # between 0.5 * DOWNLOAD_DELAY and 1.5 * DOWNLOAD_DELAY
 # while fetching requests from the same website (enabled by default)
@@ -175,6 +175,7 @@ RETRY_TIMES = 2
 RETRY_HTTP_CODES = [500, 502, 503, 504, 522, 524, 400, 408, 429]
 
 # Obey robots.txt rules
+# NOTE: Doesn't affect the spiders currently (Feb 2024)
 ROBOTSTXT_OBEY = False
 
 DOWNLOADER_STATS = True
@@ -243,7 +244,7 @@ SPIDERMON_UNWANTED_HTTP_CODES = {
     504: 10,
     523: 0
 }
-SPIDERMON_MAX_RETRIES = 0
+SPIDERMON_MAX_RETRIES = 10
 SPIDERMON_MAX_DOWNLOADER_EXCEPTIONS = 0
 
 # Settings for other_monitors

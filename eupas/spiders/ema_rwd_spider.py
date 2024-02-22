@@ -253,7 +253,8 @@ class EMA_RWD_Spider(spiders.Spider):
     def parse(self, response: http.TextResponse) -> Generator[http.Request, None, None]:
 
         study = EMA_RWD_Study()
-        study['title'] = response.xpath('.//h1//text()').get()
+        # NOTE: Can contain <br>; Maybe better to extract from study identification
+        study['title'] = ''.join(response.xpath('.//h1//text()').getall())
 
         content = response.css('.content-banner-content-wrapper')
         dates = content.css('.dates')
@@ -262,17 +263,10 @@ class EMA_RWD_Spider(spiders.Spider):
         study['update_date'] = self.clean(
             dates.xpath('./div[2]//span/text()').get())
 
-        study['eu_pas_register_number'] = content.xpath(
-            './div[2]/div[2]/text()').get().strip()
-
-        study['state'] = content.xpath(
-            './div[3]/div[2]/span/span/text()').get().strip()
-
         study['url'] = '/'.join(response.url.split('/')[:-1])
-
+        study['pdf_url'] = f'{self.base_url}{response.css(".bcl-card-link-set").xpath("./a/@href").get()}'
         if self.custom_settings.get('SAVE_PDF'):
-            pdf_url = f'{self.base_url}{response.css(".bcl-card-link-set").xpath("./a/@href").get()}'
-            yield http.Request(url=pdf_url, callback=self.save_pdf, cb_kwargs=dict(study=study), meta=dict(download_timeout=60))
+            yield http.Request(url=study['pdf_url'], callback=self.save_pdf, cb_kwargs=dict(study=study), meta=dict(download_timeout=180))
 
         self.parse_admin_details(response=response, study=study)
         yield http.Request(url=f'{study["url"]}/methodological-aspects', callback=self.parse_method_details, cb_kwargs=dict(study=study))
@@ -294,12 +288,22 @@ class EMA_RWD_Spider(spiders.Spider):
         if study_identification := fieldsets.css('#darwin-study-identification .fieldset-wrapper'):
             study['puri'] = study_identification.xpath(
                 './/dd')[0].xpath('.//text()').get()
+            study['eu_pas_register_number'] = study_identification.xpath(
+                './/dd')[1].xpath('.//text()').get()
+            # NOTE: Can contain <br> if extracted from <h1>
+            study['title'] = study_identification.xpath(
+                './/dd')[3].xpath('.//text()').get()
             study['countries'] = sorted(study_identification.xpath(
                 './/dd')[5].xpath('.//text()').getall())
-            if len(study_identification.xpath('.//dt')) > 6:
-                if 'description' in study_identification.xpath('.//dt')[6].xpath('.//text()').get().lower():
-                    study['description'] = study_identification.xpath(
-                        './/dd')[6].xpath('.//text()').get()
+            table = zip(study_identification.xpath('.//dt//text()').getall()[6:],
+                        study_identification.xpath('.//dd//text()').getall()[6:])
+            table = zip(study_identification.xpath('.//dt//text()').getall()[6:],
+                        [entry.xpath('.//text()').get() for entry in study_identification.xpath('.//dd')[6:]])
+            for [name, value] in table:
+                if 'description' in name.lower():
+                    study['description'] = value
+                if 'status' in name.lower():
+                    study['state'] = value
 
         # Research institution and networks
         # NOTE: Centres got major changes on the new website
@@ -315,15 +319,16 @@ class EMA_RWD_Spider(spiders.Spider):
 
             if additional_orgs := institutions_and_networks.css('*[class$="addit-organis"]'):
                 study['additional_institutions_encepp'] = \
-                    additional_orgs.xpath('.//a//text()').getall()
+                    sorted(additional_orgs.xpath('.//a//text()').getall())
 
             if additional_orgs_other := institutions_and_networks.css('*[class$="addit-organis-other"]'):
+                # NOTE: Some values are seperated by a <br> tag
                 study['additional_institutions_not_encepp'] = \
-                    additional_orgs_other.xpath('./text()').get()
+                    ''.join(additional_orgs_other.xpath('./text()').getall())
 
             if networks := institutions_and_networks.css('*[class$="network"]'):
                 study['networks_encepp'] = \
-                    networks.xpath('.//a//text()').getall()
+                    sorted(networks.xpath('.//a//text()').getall())
 
             if additional_networks := institutions_and_networks.css('*[class$="network-other"]'):
                 study['networks_not_encepp'] = \
@@ -373,7 +378,8 @@ class EMA_RWD_Spider(spiders.Spider):
         if funding := fieldsets.css('#darwin-sources-of-funding .fieldset-wrapper'):
 
             if sources := funding.xpath('./div[1]'):
-                study['funding_sources'] = sources.xpath('.//text()').getall()
+                study['funding_sources'] = sorted(
+                    sources.xpath('.//text()').getall())
 
             if details := funding.xpath('./div[2]'):
                 study['funding_details'] = details.xpath('./div/text()').get()

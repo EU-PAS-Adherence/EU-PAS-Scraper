@@ -36,6 +36,7 @@ def serialize_eupas_document_url(x: str, empty_url_name: str = 'Empty Url') -> s
 class EMA_RWD_Study(item.Item):
     url = item.Field(required=True)
     puri = item.Field(required=True)
+    pdf_url = item.Field(required=True)
     update_date = item.Field(required=True, serializer=serialize_date)
     registration_date = item.Field(required=True, serializer=serialize_date)
     eu_pas_register_number = item.Field(
