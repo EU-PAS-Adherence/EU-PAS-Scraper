@@ -107,7 +107,7 @@ class Command(PandasCommand):
         self.logger.info(
             'Filling empty cells in percentage columns with default value 0.0')
         for field in self.percentage_fields:
-            df[field].fillna(0.0, inplace=True)
+            df[field] = df[field].fillna(0.0)
 
         df['funding_other_percentage'] = df['funding_other_percentage'].apply(
             lambda x: list(map(float, x)) if isinstance(x, list) else [0.0])
@@ -130,6 +130,18 @@ class Command(PandasCommand):
             'Adults (65 - 74 years)': '65+ years',
             'Adults (75 years and over)': '65+ years'
         }
+
+        # age_map = {
+        #     'Preterm newborns': '<18 years',
+        #     'Term newborns (0-27 days)': '<18 years',
+        #     'Infants and toddlers (28 days - 23 months)': '<18 years',
+        #     'Children (2 - 11 years)': '<18 years',
+        #     'Adolescents (12 - 17 years)': '<18 years',
+        #     'Adults (18 - 44 years)': '18-64 years',
+        #     'Adults (45 - 64 years)': '18-64 years',
+        #     'Adults (65 - 74 years)': '65+ years',
+        #     'Adults (75 years and over)': '65+ years'
+        # }
 
         scope_list = [
             'Risk assessment',
@@ -332,7 +344,7 @@ class Command(PandasCommand):
         return grouped_agg
 
     def create_dummies(self, df, drop_references=True):
-        import numpy as np
+        # import numpy as np
 
         dummy_without_na_drop_map = {
             'state': 'Finalised',
@@ -346,7 +358,7 @@ class Command(PandasCommand):
             'multiple_funding_sources': False,
             'medical_conditions': True,
             # 'age_population': '18-64 years',  # NOTE: Combined Categories
-            'sex_population': 'Male; Female',  # NOTE: Combined Categories
+            # 'sex_population': 'Male; Female',  # NOTE: Combined Categories
             # NOTE: We use the quartiles for multivariate logistic regression
             'number_of_subjects_grouped': '100-<500',
             'number_of_subjects_quartiles': 1,
@@ -361,7 +373,7 @@ class Command(PandasCommand):
             'planned_duration_quartiles': 1,
             'requested_by_regulator': False,
             'risk_management_plan': 'Not applicable',
-            'other_population': str(np.nan),  # NOTE: Combined Categories
+            # 'other_population': str(np.nan),  # NOTE: Combined Categories
         }
 
         dummy_drop_map = {
@@ -393,9 +405,28 @@ class Command(PandasCommand):
 
         return dummies.rename(columns=self.python_name_converter)
 
+    def create_binaries(self, df):
+        binary_fields = [
+            field
+            for field in self.multiple_categories_fields
+            if field not in ['study_design', 'data_source_types']
+        ]
+
+        def column_renamer(x, field):
+            lowercase = re.sub(r'\s+', '_', x.lower())
+            return f'{field}{self.variables_seperator}{lowercase}'
+
+        return self.pd.concat([
+            df[field].str.get_dummies('; ')
+            .rename(columns=lambda x: column_renamer(x, field))
+            for field in binary_fields
+        ], axis='columns')
+
     def create_variables(self, df, drop_references=True):
         dummies = self.create_dummies(df, drop_references)
-        variables = dummies.assign(registration_date=df['registration_date'])
+        binaries = self.create_binaries(df)
+        variables = self.pd.concat([dummies, binaries], axis='columns') \
+            .assign(registration_date=df['registration_date'])
         return variables
 
     def run_logit(self, df, y, var_col_map):
@@ -433,9 +464,14 @@ class Command(PandasCommand):
         return self.run_logit(df, y, var_col_map)
 
     def multivariate_lr(self, df, y):
-        # NOTE: We keep the quartiles instead
-        high_corr_fiels = ['number_of_countries_grouped',
-                           'number_of_subjects_grouped']
+        high_corr_fiels = ['number_of_countries_grouped',  # NOTE: We keep the quartiles instead
+                           'number_of_subjects_grouped',  # NOTE: We keep the quartiles instead
+                           # 'state',  # NOTE: This field is somtimes assigned wrong based on the dates provided and correlates strongly: 'state__finalised' and 'has_results'
+                           # 'requested_by_regulator',  # NOTE: This field can only be true if the study is required by rmp (merge the variables?)
+                           # 'country_type',  # NOTE: This field is correlated with the number_of_countries_grouped or number_of_countries_quartiles categories
+                           # 'planned_duration',  # NOTE: This field is only filled if the study is ongoing
+                           # 'secondary_outcomes'  # NOTE: This field can only be true if there are primary outcomes (merge the variables?)
+                           ]
 
         drop_high_corr = [
             col for col in df.columns if col.split(self.variables_seperator)[0] in high_corr_fiels]
@@ -619,6 +655,19 @@ class Command(PandasCommand):
         grouped_agg = self.create_grouped_agg(data_to_group)
         self.write_output(grouped_agg, '_statistics_centre_all')
 
+        y = categories.loc[:, ['has_protocol', 'has_result']].astype(int)
+        variables_all = self.create_variables(
+            categories, drop_references=False)
+        variables_all_y = variables_all.merge(
+            y,
+            left_index=True,
+            right_index=True,
+            how='right'
+        )
+        corr = variables_all_y.corr()
+        self.write_output(
+            corr, '_statistics_categories_variables_correlations_all')
+
         for df, y_label, name in [
                 (categories_past_data_collection, 'has_protocol', 'protocol'),
                 (categories_two_weeks_past_final_report, 'has_result', 'results')]:
@@ -648,22 +697,12 @@ class Command(PandasCommand):
                 how='right'
             )
 
-            # import seaborn as sns
-            # sns.set_theme(style="white")
-            # corr = dummies_all_y.corr()
-            # f, ax = plt.subplots(figsize=(11, 9))
-            # mask = np.triu(np.ones_like(corr, dtype=bool))
-            # cmap = sns.diverging_palette(230, 20, as_cmap=True)
-            # sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
-            #             square=True, linewidths=.5, cbar_kws={"shrink": .5})
-            # f.savefig(f'test_{name}.png')
-
             correlations = variables_all_y \
                 .corr(method='pearson')[y_label] \
                 .drop(y_label) \
                 .rename(f'{y_label}_pearson_correlation_coefficient')
             self.write_output(
-                correlations.to_frame(), f'_statistics_categories_variables_correlations_{name}')
+                correlations.to_frame(), f'_statistics_categories_variables_correlations_for_{name}_model')
 
             self.logger.info(
                 'Running univariate logistic regression and writing output...')
@@ -693,6 +732,16 @@ class Command(PandasCommand):
         self.logger.info('Generating and writing plots...')
         (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)
         mpl.style.use('bmh')
+
+        # import seaborn as sns
+        # sns.set_theme(style="white")
+        # f, ax = plt.subplots(figsize=(20, 15))
+        # mask = np.triu(np.ones_like(corr, dtype=bool))
+        # cmap = sns.diverging_palette(230, 20, as_cmap=True)
+        # sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
+        #             square=True, linewidths=.5, cbar_kws={"shrink": .5})
+        # f.savefig(self.output_folder / 'plots' / 'correlation_heatmap.png')
+
         date = data['registration_date'].dt.to_period('M')
         self.pd.concat(
             [
