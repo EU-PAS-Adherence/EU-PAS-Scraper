@@ -15,12 +15,18 @@ class Command(PandasCommand):
 
     matched_meta_field_name_prefix = '$MATCHED'
 
-    centre_match_fields = ['centre_name', 'centre_name_of_investigator']
-
+    centre_match_fields = [
+        'centre_name',
+        'centre_name_of_investigator',
+        # 'eu_pas_register_number'
+    ]
     centre_match_checking_fields = centre_match_fields
     centre_match_missing_file_name_prefix = 'missing'
 
-    substance_match_fields = ['sustance_atc', 'substance_inn']
+    substance_match_fields = [
+        'sustance_atc',
+        'substance_inn'
+    ]
 
     study_cancelled_meta_field_name = '$CANCELLED'
 
@@ -103,33 +109,32 @@ class Command(PandasCommand):
 
     def process_options(self, args, opts):
         PandasCommand.process_options(self, args, opts)
+
+        def validate_path(path, command, file_extension='.xlsx'):
+            if not path.is_file():
+                raise UsageError(
+                    f"Invalid {command} value, use a valid path to a file", print_help=False)
+
+            if path.suffix != file_extension:
+                raise UsageError(
+                    f"Invalid {command} value, xlsx file expected", print_help=False)
+
+        # Centre Matching
         self.centre_match_enabled = 'centre_match' in args
         self.check_centre_match = self.centre_match_enabled and opts.check_centre_match
+        self.centre_match_path = Path(opts.centre_match_input or "")
+        if self.centre_match_enabled:
+            validate_path(self.centre_match_path, '-ci')
 
+        # Substance Matching
         self.substance_match_enabled = 'substance_match' in args
+        self.substance_match_path = Path(opts.substance_match_input or "")
+        if self.substance_match_enabled:
+            validate_path(self.substance_match_path, '-si')
 
+        # Cancel Detection
         self.cancel_enabled = 'cancel' in args
         self.detailed_cancel_fields = self.cancel_enabled and opts.detailed_cancel_fields
-
-        self.centre_match_path = Path(opts.centre_match_input or "")
-
-        if not self.centre_match_path.is_file() and self.centre_match_enabled:
-            raise UsageError(
-                "Invalid -ci value, use a valid path to a file", print_help=False)
-
-        if self.centre_match_path.suffix != '.xlsx' and self.centre_match_enabled:
-            raise UsageError(
-                "Invalid -ci value, xlsx file expected", print_help=False)
-
-        self.substance_match_path = Path(opts.substance_match_input or "")
-
-        if not self.substance_match_path.is_file() and self.substance_match_enabled:
-            raise UsageError(
-                "Invalid -si value, use a valid path to a file", print_help=False)
-
-        if self.substance_match_path.suffix != '.xlsx' and self.substance_match_enabled:
-            raise UsageError(
-                "Invalid -si value, xlsx file expected", print_help=False)
 
     def syntax(self):
         return "patch_name [options]"
@@ -196,10 +201,13 @@ class Command(PandasCommand):
             centre_match_combined_field_name = f'{self.matched_meta_field_name_prefix}_combined_centre_name'
 
             data[centre_match_combined_field_name] = \
-                data[[f'{self.matched_meta_field_name_prefix}_{field_name}' for field_name in self.centre_match_fields]] \
+                data.filter(like=self.matched_meta_field_name_prefix) \
                 .apply(lambda x: ''.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
-            data.loc[data[centre_match_combined_field_name] ==
-                     '', centre_match_combined_field_name] = self.pd.NA
+            data.loc[
+                data[centre_match_combined_field_name] == '',
+                centre_match_combined_field_name
+            ] = self.pd.NA
+
             self.logger.info('Centre matching finished')
 
             if self.check_centre_match:
@@ -235,24 +243,24 @@ class Command(PandasCommand):
         if self.substance_match_enabled:
             self.logger.info('Start substance matching')
 
-            if not set(self.substance_match_fields).issubset(set(EU_PAS_Study.fields)):
-                raise UsageError(
-                    "At least one substance match value isn't a valid field name", print_help=False)
+            # if not set(self.substance_match_fields).issubset(set(EU_PAS_Study.fields)):
+            #     raise UsageError(
+            #         "At least one substance match value isn't a valid field name", print_help=False)
 
-            self.logger.info('\tReading substance matching data...')
-            matching_data = self.pd.read_excel(
-                self.substance_match_path, sheet_name=self.substance_match_fields, keep_default_na=False, na_values=self.na_values, na_filter=True)
+            # self.logger.info('\tReading substance matching data...')
+            # matching_data = self.pd.read_excel(
+            #     self.substance_match_path, sheet_name=self.substance_match_fields, keep_default_na=False, na_values=self.na_values, na_filter=True)
 
-            # print(matching_data)
             raise NotImplementedError()
 
         if self.cancel_enabled:
             self.logger.info('Start cancel detection')
-            data[self.study_cancelled_meta_field_name] = data['description'].str.contains(
-                '|'.join(self.study_cancelled_patterns), case=False)
+            data[self.study_cancelled_meta_field_name] = data['description'].str \
+                .contains('|'.join(self.study_cancelled_patterns), case=False)
 
             data[self.updated_state_meta_field_name] = data['state']
-            query = data[self.study_cancelled_meta_field_name].fillna(False)
+            query = data[self.study_cancelled_meta_field_name].astype(bool) \
+                & data[self.study_cancelled_meta_field_name].notna()
             data.loc[query, self.updated_state_meta_field_name] = 'Cancelled'
             self.logger.info('Cancel detection finished')
 
@@ -261,15 +269,17 @@ class Command(PandasCommand):
                 self.logger.info('Start adding detailed cancel fields')
 
                 # NOTE: Only extracts first match
-                data[f'{self.study_cancelled_meta_field_name}_extracted_word'] = data['description'].str.extract('|'.join(
-                    [fr'({x}\S*\b)' for x in self.study_cancelled_patterns]), flags=re.IGNORECASE).apply(
-                        lambda x: '; '.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
+                data[f'{self.study_cancelled_meta_field_name}_extracted_word'] = data['description'].str \
+                    .extract('|'.join([fr'({x}\S*\b)' for x in self.study_cancelled_patterns]), flags=re.IGNORECASE) \
+                    .apply(lambda x: '; '.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
 
                 # NOTE: Only extracts first matched sentence
-                data[f'{self.study_cancelled_meta_field_name}_extracted_sentence'] = data['description'].str.extract('|'.join(
-                    [fr'(\b[^.!?]*{x}\S*\b[^.!?]*(?P<end{i}>[.!?]+)?(?(end{i})|$))' for i, x in enumerate(self.study_cancelled_patterns)]),
-                    flags=re.IGNORECASE).apply(
-                        lambda x: '; '.join([str(y) for y in x.values if not re.match(r'nan|[.!?]+', str(y))]), axis='columns')
+                data[f'{self.study_cancelled_meta_field_name}_extracted_sentence'] = data['description'].str \
+                    .extract('|'.join([
+                        fr'(\b[^.!?]*{x}\S*\b[^.!?]*(?P<end{i}>[.!?]+)?(?(end{i})|$))'
+                        for i, x in enumerate(self.study_cancelled_patterns)
+                    ]), flags=re.IGNORECASE) \
+                    .apply(lambda x: '; '.join([str(y) for y in x.values if not re.match(r'nan|[.!?]+', str(y))]), axis='columns')
 
                 self.logger.info('Added detailed cancel fields')
 
