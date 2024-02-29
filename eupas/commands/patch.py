@@ -6,25 +6,39 @@ import re
 from scrapy.exceptions import UsageError
 
 from eupas.commands import PandasCommand
-from eupas.items import EU_PAS_Study
+from eupas.items import EU_PAS_Study, EMA_RWD_Study
 
 
 class Command(PandasCommand):
 
-    commands = frozenset(['centre_match', 'cancel'])
+    commands = frozenset(['match', 'state'])
 
     matched_meta_field_name_prefix = '$MATCHED'
 
-    centre_match_fields = [
-        'centre_name',
-        'centre_name_of_investigator',
-        # 'eu_pas_register_number'
-    ]
-    centre_match_checking_fields = [
-        'centre_name',
-        'centre_name_of_investigator'
-    ]
-    centre_match_missing_file_name_prefix = 'missing'
+    match_map = {
+        EU_PAS_Study: [
+            'centre_name',
+            'centre_name_of_investigator',
+            # 'eu_pas_register_number'
+        ],
+        EMA_RWD_Study: [
+            'lead_institution_encepp',
+            'lead_institution_not_encepp',
+            # 'eu_pas_register_number'
+        ]
+    }
+
+    match_checking_map = {
+        EU_PAS_Study: [
+            'centre_name',
+            'centre_name_of_investigator',
+        ],
+        EMA_RWD_Study: [
+            'lead_institution_encepp',
+            'lead_institution_not_encepp',
+        ]
+    }
+    match_missing_file_name_prefix = 'missing'
 
     study_cancelled_meta_field_name = '$CANCELLED'
 
@@ -65,21 +79,27 @@ class Command(PandasCommand):
         PandasCommand.add_options(self, parser)
         patch = parser.add_argument_group(title="Custom Patching Options")
         patch.add_argument(
-            "-ci",
-            "--centre-match-input",
+            "-mi",
+            "--match-input",
             metavar="FILE",
             default=None,
-            help="path to the centre matching file"
+            help="path to the matching file"
         )
         patch.add_argument(
-            "-cc",
-            "--check-centre-match",
+            "-mc",
+            "--match-check",
             action="store_true",
-            help="checks if all centre fields matched and sets the correct exitcode based on the result"
+            help="checks if all match_checking fields matched and sets the correct exitcode based on the result"
         )
         patch.add_argument(
-            "-dcf",
-            "--detailed-cancel-fields",
+            "--match-eupas",
+            action="store_true",
+            default=False,
+            help="matches based on the fields of the EU PAS Register instead of the EMA RWD Catalogue"
+        )
+        patch.add_argument(
+            "-ac",
+            "--add-cancel-fields",
             action="store_true",
             help="adds additional cancel fields"
         )
@@ -96,16 +116,17 @@ class Command(PandasCommand):
                 raise UsageError(
                     f"Invalid {command} value, xlsx file expected", print_help=False)
 
-        # Centre Matching
-        self.centre_match_enabled = 'centre_match' in args
-        self.check_centre_match = self.centre_match_enabled and opts.check_centre_match
-        self.centre_match_path = Path(opts.centre_match_input or "")
-        if self.centre_match_enabled:
-            validate_path(self.centre_match_path, '-ci')
+        # Matching
+        self.matching_enabled = 'match' in args
+        self.match_type = EU_PAS_Study if opts.match_eupas else EMA_RWD_Study
+        self.match_checking_enabled = self.matching_enabled and opts.match_check
+        self.match_input_path = Path(opts.match_input or "")
+        if self.matching_enabled:
+            validate_path(self.match_input_path, '-mi')
 
-        # Cancel Detection
-        self.cancel_enabled = 'cancel' in args
-        self.detailed_cancel_fields = self.cancel_enabled and opts.detailed_cancel_fields
+        # State Update
+        self.update_state_enabled = 'state' in args
+        self.add_cancel_fields_enabled = self.update_state_enabled and opts.add_cancel_fields
 
     def syntax(self):
         return "patch_name [options]"
@@ -116,9 +137,10 @@ class Command(PandasCommand):
     def run(self, args, opts):
         '''
         Performs different tasks based on arguments:
-            centre_match        This will unify the centre_name columns with the help of a matching spreadsheet\n
-            cancel              This will find cancelled studies with a list of regex patterns
+            match        This will unify the centre or institution columns with the help of a matching spreadsheet\n
+            state        This will find cancelled studies with a list of regex patterns and update the state column based on the dates
         '''
+        import numpy as np
         super().run(args, opts)
 
         if len(args) == 0:
@@ -137,23 +159,25 @@ class Command(PandasCommand):
         self.logger.info('Reading input data...')
         data = self.read_input()
 
-        if self.centre_match_enabled:
-            self.logger.info('Start centre matching')
+        if self.matching_enabled:
+            self.logger.info('Start matching')
 
-            if not set(self.centre_match_fields).issubset(set(EU_PAS_Study.fields)):
+            match_fields = self.match_map[self.match_type]
+
+            if not set(match_fields).issubset(set(self.match_type.fields)):
                 raise UsageError(
-                    "At least one centre match value isn't a valid field name", print_help=False)
+                    "At least one match value isn't a valid field name", print_help=False)
 
-            self.logger.info('\tReading centre matching data...')
+            self.logger.info('\tReading matching data...')
             matching_data = self.pd.read_excel(
-                self.centre_match_path,
-                sheet_name=self.centre_match_fields,
+                self.match_input_path,
+                sheet_name=match_fields,
                 keep_default_na=False,
                 na_values=self.na_values,
                 na_filter=True
             )
 
-            for field_name in self.centre_match_fields:
+            for field_name in match_fields:
                 # NOTE: If validation fails: check for duplicate original values in the matching file or values matching the na_values
                 data = self.pd.merge(
                     data,
@@ -168,32 +192,35 @@ class Command(PandasCommand):
                     validate='m:1'
                 )
 
-            centre_match_combined_field_name = f'{self.matched_meta_field_name_prefix}_combined_centre_name'
+            match_combined_field_name = f'{self.matched_meta_field_name_prefix}_combined_centre_name'
 
-            data[centre_match_combined_field_name] = \
+            data[match_combined_field_name] = \
                 data.filter(like=self.matched_meta_field_name_prefix) \
                 .apply(lambda x: ''.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
+
             data.loc[
-                data[centre_match_combined_field_name] == '',
-                centre_match_combined_field_name
+                data[match_combined_field_name] == '',
+                match_combined_field_name
             ] = self.pd.NA
 
-            self.logger.info('Centre matching finished')
+            self.logger.info('Matching finished')
 
-            if self.check_centre_match:
-                self.logger.info('Start centre match checking')
+            if self.match_checking_enabled:
+                self.logger.info('Start match checking')
+
                 not_matched = data.loc[
-                    data[centre_match_combined_field_name].isna()
+                    data[match_combined_field_name].isna()
                 ]
+
                 if not not_matched.empty:
                     check_match_data = {
                         field: not_matched.loc[
                             data[field].notna(), field
                         ].drop_duplicates().sort_values().tolist()
-                        for field in self.centre_match_checking_fields
+                        for field in self.match_checking_map[self.match_type]
                     }
 
-                    with open(self.output_folder / f'{self.centre_match_missing_file_name_prefix}_all.json', 'w', encoding='utf-8') as f:
+                    with open(self.output_folder / f'{self.match_missing_file_name_prefix}_all.json', 'w', encoding='utf-8') as f:
                         json.dump(
                             check_match_data,
                             f,
@@ -202,27 +229,45 @@ class Command(PandasCommand):
                         )
 
                     for field_name, missing in check_match_data.items():
-                        with open(self.output_folder / f'{self.centre_match_missing_file_name_prefix}_{field_name}.txt', 'w', encoding='utf-8') as f:
+                        with open(self.output_folder / f'{self.match_missing_file_name_prefix}_{field_name}.txt', 'w', encoding='utf-8') as f:
                             f.write('\n'.join(missing))
 
                     # NOTE: The pipeline should fail if new names have to be matched
                     self.exitcode = 1
 
-                self.logger.info('Centre match checking finished')
+                self.logger.info('Match checking finished')
 
-        if self.cancel_enabled:
-            self.logger.info('Start cancel detection')
+        if self.update_state_enabled:
+            self.logger.info('Start updating states')
             data[self.study_cancelled_meta_field_name] = data['description'].str \
                 .contains('|'.join(self.study_cancelled_patterns), case=False)
 
-            data[self.updated_state_meta_field_name] = data['state']
-            query = data[self.study_cancelled_meta_field_name].astype(bool) \
-                & data[self.study_cancelled_meta_field_name].notna()
-            data.loc[query, self.updated_state_meta_field_name] = 'Cancelled'
-            self.logger.info('Cancel detection finished')
+            data = data.assign(**{
+                self.updated_state_meta_field_name: np.where(
+                    data[self.study_cancelled_meta_field_name].astype(bool)
+                    & data[self.study_cancelled_meta_field_name].notna(),
+                    'Cancelled',
+                    np.where(
+                        data['final_report_date_actual'].notna(),
+                        'Finalised',
+                        np.where(
+                            data['data_collection_date_actual'].notna(),
+                            'Ongoing',
+                            np.where(
+                                data['funding_contract_date_planed'].notna()
+                                | data['funding_contract_date_actual'].notna(),
+                                'Planned',
+                                self.pd.NA
+                            )
+                        )
+                    )
+                ),
+                f'{self.updated_state_meta_field_name}_eq_state': lambda x: x[self.updated_state_meta_field_name] == x['state']
+            })
+            self.logger.info('Finished updating states')
 
             # TODO: Extract all matches; useful for creating better regex
-            if self.detailed_cancel_fields:
+            if self.add_cancel_fields_enabled:
                 self.logger.info('Start adding detailed cancel fields')
 
                 # NOTE: Only extracts first match
@@ -238,7 +283,7 @@ class Command(PandasCommand):
                     ]), flags=re.IGNORECASE) \
                     .apply(lambda x: '; '.join([str(y) for y in x.values if not re.match(r'nan|[.!?]+', str(y))]), axis='columns')
 
-                self.logger.info('Added detailed cancel fields')
+                self.logger.info('Finished adding detailed cancel fields')
 
         self.logger.info('Writing output data...')
         self.write_output(data, '_patched')
