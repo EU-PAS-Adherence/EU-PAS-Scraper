@@ -490,8 +490,8 @@ class Command(PandasCommand):
     def multivariate_lr(self, df, y):
         high_corr_fiels = ['number_of_countries_grouped',  # NOTE: We keep the quartiles instead
                            'number_of_subjects_grouped',  # NOTE: We keep the quartiles instead
-                           # 'state',  # NOTE: This field is somtimes assigned wrong based on the dates provided and correlates strongly: 'state__finalised' and 'has_results'
-                           # 'requested_by_regulator',  # NOTE: This field can only be true if the study is required by rmp (merge the variables?)
+                           # 'state',  # NOTE: This field is sometimes assigned falsely based on the dates provided (Fix?)
+                           # 'requested_by_regulator',  # NOTE: This field should only be true if the study is required by rmp?
                            # 'country_type',  # NOTE: This field is correlated with the number_of_countries_grouped or number_of_countries_quartiles categories
                            # 'planned_duration',  # NOTE: This field is only filled if the study is ongoing
                            # 'secondary_outcomes'  # NOTE: This field can only be true if there are primary outcomes (merge the variables?)

@@ -1,8 +1,8 @@
 # NOT DEFAULT
 # commands/         Contains all custom commands extending the default scrapy commands
 # spiders/          Contains all spiders
-# validators/       Contains all jsonschemas for spidermons item validation. TODO: Add ATC and KEGG schemas
-# contracts.py      Scrapys way of unit-testing TODO: Remove?
+# validators/       Contains all jsonschemas for spidermons item validation.
+# contracts.py      Scrapys way of unit-testing NOTE: Unused.
 # dupefilters.py    Custom Dupefilter for the eupas spider. Generates extra stats used in the monitors.
 # exporters.py      Custom XLSX and SQLITE exporters
 # extensions.py     Custom Extensions like the item History Comparer for the eupas item

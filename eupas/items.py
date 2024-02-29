@@ -33,6 +33,7 @@ def serialize_eupas_document_url(x: str, empty_url_name: str = 'Empty Url') -> s
     return f'https://www.encepp.eu{x.split(";")[0]}'
 
 
+# NOTE: planed is missspelled just like the old field in the EU PAS Study
 class EMA_RWD_Study(item.Item):
     url = item.Field(required=True)
     puri = item.Field(required=True)
@@ -42,7 +43,6 @@ class EMA_RWD_Study(item.Item):
     eu_pas_register_number = item.Field(
         primary_key=True, required=True, serializer=serialize_id, sql_type=int)
     title = item.Field(required=True)
-    # country_type = item.Field(required=True)
     countries = item.Field(required=True)
     description = item.Field()
     state = item.Field()
@@ -52,7 +52,6 @@ class EMA_RWD_Study(item.Item):
     additional_institutions_not_encepp = item.Field()
     networks_encepp = item.Field()
     networks_not_encepp = item.Field()
-    # collaboration_with_research_network = item.Field(required=True)
     funding_contract_date_planed = item.Field(serializer=serialize_date)
     funding_contract_date_actual = item.Field(serializer=serialize_date)
     data_collection_date_planed = item.Field(serializer=serialize_date)
@@ -96,7 +95,6 @@ class EMA_RWD_Study(item.Item):
     data_sources_not_registered_with_encepp = item.Field()
     data_source_types = item.Field()  # NOTE: Not required anymore
     data_source_types_other = item.Field()
-    # uses_established_data_source = item.Field(required=True)
     check_conformance = item.Field(required=True)
     check_completeness = item.Field(required=True)
     check_stability = item.Field(required=True)

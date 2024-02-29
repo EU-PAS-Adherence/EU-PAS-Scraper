@@ -26,83 +26,10 @@ class RMP(Enum):
     non_EU_RPM = 54334
     not_applicable = 54335
 
-
-# class EMA_RWD_CSV_Spider(spiders.Spider):
-#     '''
-#     This Scrapy Spider extracts study data from the EU PAS Register using the default csv export.
-#     '''
-
-#     # Overriden Spider Settings
-#     # name is used to start a spider with the scrapy cmd crawl or runspider
-#     # The eupas cmd runs this spider directly and simplifies arguments
-#     name = 'ema_rwd_csv'
-#     # custom_settings contains own settings, but can also override the values in settings.py
-#     custom_settings = {
-#         'FILTER_STUDIES': False,
-#     }
-#     # These are the allowed domains. This spider should only follow urls in these domains
-#     allowed_domains = ['catalogues.ema.europa.eu']
-
-#     # URLS and headers
-#     base_url = 'https://catalogues.ema.europa.eu'
-#     query_url = f'{base_url}/search/export-data-study?sort_bef_combine=title_ASC&f[0]=content_type%3Adarwin_study&page=0&_format=csv'
-
-#     # Filter Settings
-#     # This string is used to query the studies
-#     # NOTE: There are other queries which aren't included in this string
-#     template_string = '&f[1]=risk_management_plan_category%3A{risk_management_plan_id}'
-
-#     def __init__(self, filter_studies=False, filter_rmp_category=None, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.custom_settings.update({
-#             'FILTER_STUDIES': filter_studies
-#         })
-#         self.rmp_query_val = filter_rmp_category.value if filter_rmp_category else ''
-
-#     @classmethod
-#     def from_crawler(cls, crawler, *args, **kwargs):
-#         spider = super().from_crawler(crawler, *args, **kwargs)
-#         crawler.signals.connect(spider.idle, signals.spider_idle)
-#         return spider
-
-#     def start_requests(self) -> List[http.Request]:
-#         '''
-#         Starts the scraping process by requesting a query for all (or a filtered subset of all) PAS.
-#         '''
-#         extra_query = ''
-#         if self.custom_settings.get('FILTER_STUDIES'):
-#             extra_query = self.template_string.format(
-#                 risk_management_plan_id=self.rmp_query_val,
-#             )
-#         self.query_url = f'{self.query_url}{extra_query}'
-
-#         self.logger.info('Starting Extraction')
-#         return [http.Request(
-#             url=self.query_url,
-#             callback=self.parse
-#         )]
-
-#     def parse(self, response: http.TextResponse):
-#         print(response.text)
-
-#     def idle(self):
-#         if self.custom_settings.get('PROGRESS_LOGGING') and isinstance(self.pbar, tqdm):
-#             self.pbar.close()
-
-#     def closed(self, reason: str):
-#         if reason == 'finished':
-#             self.logger.info('Scraping finished successfully.')
-#         elif reason == 'shutdown':
-#             self.logger.info('Scraping was stopped by user.')
-#         else:
-#             self.logger.info(f'Scraping finished with reason: {reason}')
-
-#         self.logger.info(
-#             f'Extraction finished in {self.crawler.stats.get_value("elapsed_time_seconds")} seconds.')
-
-
 # NOTE: This Spider is unnecessary because of the native export capability of the new website.
 #       It is also much easier to write a scraper for this new website.
+
+
 class EMA_RWD_Spider(spiders.Spider):
     '''
     This Scrapy Spider extracts study data from the EU PAS Register.

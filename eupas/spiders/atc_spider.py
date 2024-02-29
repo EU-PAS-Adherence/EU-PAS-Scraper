@@ -9,6 +9,8 @@ import re
 from scrapy import spiders, http, signals
 from tqdm import tqdm
 
+# NOTE: Substance matching is to complex and will not be used
+
 
 class ATC_Spider(spiders.Spider):
     '''

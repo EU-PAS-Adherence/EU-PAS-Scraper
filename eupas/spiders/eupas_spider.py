@@ -26,6 +26,7 @@ class RMP(Enum):
     non_EU_RPM = 5
 
 
+# NOTE: This spider doesn't work since 2024-02-15
 class EU_PAS_Spider(spiders.Spider):
     '''
     This Scrapy Spider extracts study data from the EU PAS Register.

@@ -6,8 +6,6 @@ import unicodedata
 from scrapy.exceptions import UsageError
 from eupas.commands import PandasCommand
 
-from eupas.items import EU_PAS_Study
-
 
 class Command(PandasCommand):
 
@@ -84,17 +82,19 @@ class Command(PandasCommand):
                 "running 'scrapy cluster' without additional arguments is not supported"
             )
 
-        if not set(args).issubset(set(EU_PAS_Study.fields)):
-            raise UsageError(
-                "At least one cluster value isn't a valid field name", print_help=False)
-
         self.logger = logging.getLogger()
         self.logger.info('Starting cluster script')
         self.logger.info(f'Pandas {self.pd.__version__}')
         self.logger.info('Reading and cleaning input data...')
+
+        input = self.read_input()
+        if not set(args).issubset(set(input.columns.values)):
+            raise UsageError(
+                "At least one cluster value isn't a valid field name", print_help=False)
+
         dfs = {
             field_name:
-            self.read_input().loc[:, [field_name]]
+            input.loc[:, [field_name]]
                 .rename(columns={field_name: 'manual'})
                 .dropna()
                 .drop_duplicates()

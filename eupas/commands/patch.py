@@ -11,7 +11,7 @@ from eupas.items import EU_PAS_Study
 
 class Command(PandasCommand):
 
-    commands = frozenset(['centre_match', 'substance_match', 'cancel'])
+    commands = frozenset(['centre_match', 'cancel'])
 
     matched_meta_field_name_prefix = '$MATCHED'
 
@@ -20,57 +20,41 @@ class Command(PandasCommand):
         'centre_name_of_investigator',
         # 'eu_pas_register_number'
     ]
-    centre_match_checking_fields = centre_match_fields
-    centre_match_missing_file_name_prefix = 'missing'
-
-    substance_match_fields = [
-        'sustance_atc',
-        'substance_inn'
+    centre_match_checking_fields = [
+        'centre_name',
+        'centre_name_of_investigator'
     ]
+    centre_match_missing_file_name_prefix = 'missing'
 
     study_cancelled_meta_field_name = '$CANCELLED'
 
     # TODO: Train logistic regression model with ML-Approach
     study_cancelled_patterns = [
-        # Best predictor of cancellation
+        # NOTE: Best predictor of cancellation
         r'\bcancel',
-
-        # Many false positives; could be reduced by checking the occurence of the words:
+        # NOTE: r'\bdiscontinu' has many false positives; could be reduced by checking the occurence of the words:
         # study, studies, trial, PAS, PASS, PAES, MAH, market authorisation etc. in the same sentence
-        r'\bdiscontinu',
-
-        # False positives in pregnancy related studies can be reduced by using the new regex
-        # instead pf the old: r'\bterminat'
-        r'\b(?<!pregnancy )(?<!elective )(?<!medical )(?<!induced )terminat'
-
-        # No matches found for halted etc.
+        r'\bdiscontinue(?!\s|s|rs)',
+        # NOTE: False positives with r'\bterminat' in pregnancy related studies can be reduced by using the regex below
+        r'\b(?<!pregnancy )(?<!elective )(?<!medical )(?<!induced )terminat',
+        # NOTE: No matches found for halted, etc.
         r'\bhalt',
-
-        # Only three false positive matches => not completly
-        # r'\bnot\s+complet',
-
-        # One false positive, one unclear and one true positive
-        r'\bsuspend',
-
-        # Many false positives
-        # Also matches withdrawal of meds and withdrawal reactions, withdrawal of consent, etc.
-        # r'\bwithdr(?:a|e)w',
-        # Cant exclude withdrawal because i.e. withdrawal of the MAH, withdrawal of the study
+        # NOTE: r'\bsuspend' has one false positive, one unclear and one true positive
+        r'\bsuspend(?!\s)',
+        # NOTE: r'\bwithdr(?:a|e)w' has many false positives and matches withdrawal of meds as well as withdrawal reactions, withdrawal of consent, etc.
+        # Cant exclude the word withdrawal because i.e. withdrawal of the MAH, withdrawal of the study
         r'\bwithdr(?:a|e)w(?!\S*\s+(?:reaction|symptom|rate|(?:of|from)\s+(?:\b\S+\b\s+)?(?:consent|treatment|drug|medication)))',
-
-        # No matches found for revoked etc.
+        # NOTE: No matches found for revoked etc.
         r'\brevok',
-
-        # The term abort has practically no relevance for study cancellation and is also used often in
+        # NOTE: The expression r'\babort' for words like abort has practically no relevance for study cancellation and is also used often in
         # pregnancy related studies. It can be improved in a similiar way to the termination term
-        # r'\babort'
-        # r'\b(?<!spontaneous )(?<!medical )(?<!induced )(?<!elective termination/)abort'
-
-        # Only matches treatment interruption and the term "interrupted time series"
-        # r'\binterrupt'
-
-        # No matches found for abandoned etc.
-        r'\abandon'
+        # r'\b(?<!spontaneous )(?<!medical )(?<!induced )(?<!elective termination/)abort',
+        # NOTE: r'\binterrupt' only matches treatment interruption and the term "interrupted time series". Can be improved:
+        # r'\binterrupt(?!\S*(?:\s+|-)time)',
+        # NOTE: No matches found for abandoned etc.
+        r'\babandon',
+        # NOTE: r'\bstop' will match the word stop with false positives
+        r'\bstop(?!\s)'
     ]
     updated_state_meta_field_name = '$UPDATED_state'
 
@@ -92,13 +76,6 @@ class Command(PandasCommand):
             "--check-centre-match",
             action="store_true",
             help="checks if all centre fields matched and sets the correct exitcode based on the result"
-        )
-        patch.add_argument(
-            "-si",
-            "--substance-match-input",
-            metavar="FILE",
-            default=None,
-            help="path to the substance matching file"
         )
         patch.add_argument(
             "-dcf",
@@ -126,12 +103,6 @@ class Command(PandasCommand):
         if self.centre_match_enabled:
             validate_path(self.centre_match_path, '-ci')
 
-        # Substance Matching
-        self.substance_match_enabled = 'substance_match' in args
-        self.substance_match_path = Path(opts.substance_match_input or "")
-        if self.substance_match_enabled:
-            validate_path(self.substance_match_path, '-si')
-
         # Cancel Detection
         self.cancel_enabled = 'cancel' in args
         self.detailed_cancel_fields = self.cancel_enabled and opts.detailed_cancel_fields
@@ -146,7 +117,6 @@ class Command(PandasCommand):
         '''
         Performs different tasks based on arguments:
             centre_match        This will unify the centre_name columns with the help of a matching spreadsheet\n
-            substance_match     This will unify the substances columns with the help of a matching spreadsheet\n
             cancel              This will find cancelled studies with a list of regex patterns
         '''
         super().run(args, opts)
@@ -239,19 +209,6 @@ class Command(PandasCommand):
                     self.exitcode = 1
 
                 self.logger.info('Centre match checking finished')
-
-        if self.substance_match_enabled:
-            self.logger.info('Start substance matching')
-
-            # if not set(self.substance_match_fields).issubset(set(EU_PAS_Study.fields)):
-            #     raise UsageError(
-            #         "At least one substance match value isn't a valid field name", print_help=False)
-
-            # self.logger.info('\tReading substance matching data...')
-            # matching_data = self.pd.read_excel(
-            #     self.substance_match_path, sheet_name=self.substance_match_fields, keep_default_na=False, na_values=self.na_values, na_filter=True)
-
-            raise NotImplementedError()
 
         if self.cancel_enabled:
             self.logger.info('Start cancel detection')
