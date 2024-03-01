@@ -13,7 +13,12 @@
         "title",
         "countries",
         "requested_by_regulator",
-        "study_type"
+        "study_type",
+        "check_conformance",
+        "check_completeness",
+        "check_stability",
+        "check_logical_consistency",
+        "conducted_data_characterisation"
     ],
     "properties": {
         "url": {
