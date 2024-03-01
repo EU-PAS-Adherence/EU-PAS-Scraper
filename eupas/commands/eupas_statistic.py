@@ -142,12 +142,24 @@ class Command(PandasCommand):
     def create_variables(self, df):
         import numpy as np
 
+        # age_map = {
+        #     'Preterm newborns': '<2 years',
+        #     'Term newborns (0-27 days)': '<2 years',
+        #     'Infants and toddlers (28 days - 23 months)': '<2 years',
+        #     'Children (2 - 11 years)': '2-17 years',
+        #     'Adolescents (12 - 17 years)': '2-17 years',
+        #     'Adults (18 - 44 years)': '18-64 years',
+        #     'Adults (45 - 64 years)': '18-64 years',
+        #     'Adults (65 - 74 years)': '65+ years',
+        #     'Adults (75 years and over)': '65+ years'
+        # }
+
         age_map = {
-            'Preterm newborns': '<2 years',
-            'Term newborns (0-27 days)': '<2 years',
-            'Infants and toddlers (28 days - 23 months)': '<2 years',
-            'Children (2 - 11 years)': '2-17 years',
-            'Adolescents (12 - 17 years)': '2-17 years',
+            'Preterm newborns': '<18 years',
+            'Term newborns (0-27 days)': '<18 years',
+            'Infants and toddlers (28 days - 23 months)': '<18 years',
+            'Children (2 - 11 years)': '<18 years',
+            'Adolescents (12 - 17 years)': '<18 years',
             'Adults (18 - 44 years)': '18-64 years',
             'Adults (45 - 64 years)': '18-64 years',
             'Adults (65 - 74 years)': '65+ years',
@@ -240,14 +252,7 @@ class Command(PandasCommand):
         # NOTE: There are some studies with negative planned_duration
         planned_duration[planned_duration <= np.timedelta64(0)] = self.pd.NA
 
-        def get_quartiles(s, interpolation='linear'):
-            # one_quart, median, three_quart = s.quantile(
-            #     [.25, .5, .75], interpolation=interpolation)
-            # result = np.where(s <= one_quart, 1, 0) \
-            #     + np.where((s > one_quart) & (s <= median), 2, 0) \
-            #     + np.where((s > median) & (s <= three_quart), 3, 0) \
-            #     + np.where(s > three_quart, 4, 0)
-
+        def get_quartiles(s):
             result = (self.pd.qcut(s, 4, labels=False, duplicates='drop') + 1) \
                 .fillna(0.0).astype(int)
             return np.where(result == 0, self.pd.NA, result)
@@ -258,8 +263,6 @@ class Command(PandasCommand):
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
                 lambda x: str(len(x)) if len(x) < 3 else '3 or more'),
-            number_of_countries_quartiles=lambda x: get_quartiles(
-                x['number_of_countries']),
             number_of_subjects_grouped=df['number_of_subjects'].apply(
                 lambda x:
                 '<100' if x < 100 else
@@ -268,8 +271,6 @@ class Command(PandasCommand):
                 '1000-10000' if x < 10000 else
                 '>10000'
             ),
-            number_of_subjects_quartiles=get_quartiles(
-                df['number_of_subjects']),
             age_population=df['age_population'].apply(
                 lambda ages: '; '.join(sorted(list({age_map[x] for x in ages})))),
             sex_population=df['sex_population'].apply(
@@ -375,20 +376,21 @@ class Command(PandasCommand):
             'study_type': 'Observational study',
             'collaboration_with_research_network': False,
             'country_type': 'National study',
-            # NOTE: We use the quartiles for multivariate logistic regression
+            # NOTE: We will use country_type for multivariate logistic regression
             'number_of_countries_grouped': '3 or more',
-            'number_of_countries_quartiles': 1,
-            # 'funded_by': 'Pharmaceutical companies',  # NOTE: Combined Categories => binary encoding
+            # NOTE: Combined Categories => Many categories: binary encoding?
+            # 'funded_by': 'Pharmaceutical companies',
             'multiple_funding_sources': False,
             'medical_conditions': True,
-            # 'age_population': '18-64 years',  # NOTE: Combined Categories => binary encoding
-            # 'sex_population': 'Male; Female',  # NOTE: Combined Categories => binary encoding
-            # NOTE: We use the quartiles for multivariate logistic regression
+            # NOTE: Combined Categories => Many categories: binary encoding? or less categories by grouping
+            # 'age_population': '18-64 years',
+            # NOTE: Combined Categories => But only 3 possible combinations
+            'sex_population': 'Male; Female',
             'number_of_subjects_grouped': '100-<500',
-            'number_of_subjects_quartiles': 1,
             'uses_established_data_source': False,
             'follow_up': False,
-            # 'scopes': 'Risk assessment',  # NOTE: Combined Categories => binary encoding
+            # NOTE: Combined Categories => Many categories: binary encoding?
+            # 'scopes': 'Risk assessment',
             'primary_outcomes': False,
             'secondary_outcomes': False
         }
@@ -397,7 +399,8 @@ class Command(PandasCommand):
             'planned_duration_quartiles': 1,
             'requested_by_regulator': False,
             'risk_management_plan': 'Not applicable',
-            # 'other_population': str(np.nan),  # NOTE: Combined Categories => binary encoding
+            # NOTE: Combined Categories => Many categories: binary encoding?
+            # 'other_population': str(np.nan)
         }
 
         dummy_drop_map = {
@@ -429,28 +432,29 @@ class Command(PandasCommand):
 
         return dummies.rename(columns=self.python_name_converter)
 
-    def create_binaries(self, df):
-        binary_fields = [
-            field
-            for field in self.category_array_fields
-            if field not in ['study_design', 'data_source_types']
-        ]
+    # def create_binaries(self, df):
+    #     binary_fields = [
+    #         field
+    #         for field in self.category_array_fields
+    #         if field not in ['study_design', 'data_source_types']
+    #     ]
 
-        def column_renamer(x, field):
-            lowercase = re.sub(r'\s+', '_', x.lower())
-            return f'{field}{self.variables_seperator}{lowercase}'
+    #     def column_renamer(x, field):
+    #         lowercase = re.sub(r'\s+', '_', x.lower())
+    #         return f'{field}{self.variables_seperator}{lowercase}'
 
-        return self.pd.concat([
-            df[field].str.get_dummies('; ')
-            .rename(columns=lambda x: column_renamer(x, field))
-            for field in binary_fields
-        ], axis='columns')
+    #     return self.pd.concat([
+    #         df[field].str.get_dummies('; ')
+    #         .rename(columns=lambda x: column_renamer(x, field))
+    #         for field in binary_fields
+    #     ], axis='columns')
 
     def encode_variables(self, df, drop_references=True):
         dummies = self.create_dummies(df, drop_references)
-        binaries = self.create_binaries(df)
-        encoded = self.pd.concat([dummies, binaries], axis='columns') \
-            .assign(registration_date=df['registration_date'])
+        # binaries = self.create_binaries(df)
+        # encoded = self.pd.concat([dummies, binaries], axis='columns') \
+        #     .assign(registration_date=df['registration_date'])
+        encoded = dummies.assign(registration_date=df['registration_date'])
         return encoded
 
     def run_logit(self, df, y, var_col_map):
@@ -488,14 +492,18 @@ class Command(PandasCommand):
         return self.run_logit(df, y, var_col_map)
 
     def multivariate_lr(self, df, y):
-        high_corr_fiels = ['number_of_countries_grouped',  # NOTE: We keep the quartiles instead
-                           'number_of_subjects_grouped',  # NOTE: We keep the quartiles instead
-                           # 'state',  # NOTE: This field is sometimes assigned falsely based on the dates provided (Fix?)
-                           # 'requested_by_regulator',  # NOTE: This field should only be true if the study is required by rmp?
-                           # 'country_type',  # NOTE: This field is correlated with the number_of_countries_grouped or number_of_countries_quartiles categories
-                           # 'planned_duration',  # NOTE: This field is only filled if the study is ongoing
-                           # 'secondary_outcomes'  # NOTE: This field can only be true if there are primary outcomes (merge the variables?)
-                           ]
+        high_corr_fiels = [
+            # NOTE: We keep country_type instead
+            'number_of_countries_grouped',
+            # NOTE: This field should be single-valued (finalised) for studies with past final report date
+            'state',
+            # NOTE: This field should only be true if the study is required by rmp?
+            'requested_by_regulator',
+            # NOTE: This field is only filled if the study is ongoing
+            'planned_duration',
+            # NOTE: This field can only be true if there are primary outcomes (merge the variables?)
+            'secondary_outcomes'
+        ]
 
         drop_high_corr = [
             col for col in df.columns if col.split(self.variables_seperator)[0] in high_corr_fiels]
@@ -521,10 +529,10 @@ class Command(PandasCommand):
 
         # Adding outcomes
         data = data.assign(
-            has_protocol=data['protocol_document_url'].notna(
-            ) | data['latest_protocol_document_url'].notna(),
-            has_result=data['result_document_url'].notna(
-            ) | data['latest_result_document_url'].notna()
+            has_protocol=data['protocol_document_url'].notna()
+            | data['latest_protocol_document_url'].notna(),
+            has_result=data['result_document_url'].notna()
+            | data['latest_result_document_url'].notna()
         )
 
         self.logger.info('Generating categories...')
@@ -690,9 +698,9 @@ class Command(PandasCommand):
             right_index=True,
             how='right'
         )
-        correlations = encoded_all_y.corr()
+        correlations_all = encoded_all_y.corr()
         self.write_output(
-            correlations, '_statistics_encoded_variables_correlations_all')
+            correlations_all, '_statistics_encoded_variables_correlations_all')
 
         for df, y_label, name in [
                 (variables_past_data_collection, 'has_protocol', 'protocol'),
@@ -724,12 +732,12 @@ class Command(PandasCommand):
                 how='right'
             )
 
-            correlations = encoded_with_references_y \
+            correlations_y = encoded_with_references_y \
                 .corr(method='pearson')[y_label] \
                 .drop(y_label) \
                 .rename(f'{y_label}_pearson_correlation_coefficient')
             self.write_output(
-                correlations.to_frame(), f'_statistics_encoded_variables_correlations_for_{name}_model')
+                correlations_y.to_frame(), f'_statistics_encoded_variables_correlations_for_{name}_model')
 
             def save_model_results(results, folder_name, subfolder_name):
                 (self.output_folder / folder_name / 'models' /
@@ -766,11 +774,10 @@ class Command(PandasCommand):
 
         import seaborn as sns
         sns.set_theme(context="paper", style="whitegrid")
-        correlations = encoded_all_y.corr()
         fig, ax = plt.subplots(figsize=(20, 15), dpi=300)
         ax.set_title('Correlations (Pearson)')
-        mask = np.triu(np.ones_like(correlations, dtype=bool))
-        sns.heatmap(correlations, mask=mask, cmap='RdBu', vmax=.3, center=0,
+        mask = np.triu(np.ones_like(correlations_all, dtype=bool))
+        sns.heatmap(correlations_all, mask=mask, cmap='RdBu', vmax=.3, center=0,
                     square=True, linewidths=.5, cbar_kws={"shrink": .5}, ax=ax)
         fig.savefig(self.output_folder / 'plots' /
                     'correlation_heatmap.png', bbox_inches='tight')
