@@ -111,21 +111,6 @@ class Command(PandasCommand):
     def create_variables(self, df):
         import numpy as np
 
-        # age_map = {
-        #     'Preterm newborn infants (0 – 27 days)': '<18 years',
-        #     'Term newborn infants (0 – 27 days)': '<18 years',
-        #     'Infants and toddlers (28 days – 23 months)': '<18 years',
-        #     'Children (2 to < 12 years)': '<18 years',
-        #     'Adolescents (12 to < 18 years)': '<18 years',
-        #     'Paediatric Population (< 18 years)': '<18 years',
-        #     'Adults (18 to < 46 years)': '18-64 years',
-        #     'Adults (46 to < 65 years)': '18-64 years',
-        #     'Adults (65 to < 75 years)': '65+ years',
-        #     'Adults (75 to < 85 years)': '65+ years',
-        #     'Adults (85 years and over)': '65+ years',
-        #     'Elderly (≥ 65 years)': '65+ years'
-        # }
-
         age_map = {
             'Preterm newborn infants (0 – 27 days)': '<18 years',
             'Term newborn infants (0 – 27 days)': '<18 years',
@@ -133,13 +118,29 @@ class Command(PandasCommand):
             'Children (2 to < 12 years)': '<18 years',
             'Adolescents (12 to < 18 years)': '<18 years',
             'Paediatric Population (< 18 years)': '<18 years',
-            'Adults (18 to < 46 years)': '18+ years',
-            'Adults (46 to < 65 years)': '18+ years',
-            'Adults (65 to < 75 years)': '18+ years',
-            'Adults (75 to < 85 years)': '18+ years',
-            'Adults (85 years and over)': '18+ years',
-            'Elderly (≥ 65 years)': '18+ years'
+            'Adults (18 to < 46 years)': '18-64 years',
+            'Adults (46 to < 65 years)': '18-64 years',
+            'Adults (65 to < 75 years)': '65+ years',
+            'Adults (75 to < 85 years)': '65+ years',
+            'Adults (85 years and over)': '65+ years',
+            'Elderly (≥ 65 years)': '65+ years'
         }
+
+        # NOTE: Age map with two values
+        # age_map = {
+        #     'Preterm newborn infants (0 – 27 days)': '<18 years',
+        #     'Term newborn infants (0 – 27 days)': '<18 years',
+        #     'Infants and toddlers (28 days – 23 months)': '<18 years',
+        #     'Children (2 to < 12 years)': '<18 years',
+        #     'Adolescents (12 to < 18 years)': '<18 years',
+        #     'Paediatric Population (< 18 years)': '<18 years',
+        #     'Adults (18 to < 46 years)': '18+ years',
+        #     'Adults (46 to < 65 years)': '18+ years',
+        #     'Adults (65 to < 75 years)': '18+ years',
+        #     'Adults (75 to < 85 years)': '18+ years',
+        #     'Adults (85 years and over)': '18+ years',
+        #     'Elderly (≥ 65 years)': '18+ years'
+        # }
 
         variables = df.loc[:, [
             'study_type', 'state', 'risk_management_plan',
@@ -159,9 +160,6 @@ class Command(PandasCommand):
                 .fillna(0.0).astype(int)
             return np.where(result == 0, self.pd.NA, result)
 
-        # 'data_sources_registered_with_encepp' => uses_established_data_source?
-        # 'networks_encepp' => collaboration_with_research_network?
-
         variables = variables.assign(
             updated_state=df['$UPDATED_state'],
             registration_date=df['registration_date'].dt.year,
@@ -176,6 +174,17 @@ class Command(PandasCommand):
                 '1000-10000' if x < 10000 else
                 '>10000'
             ),
+            # NOTE: Number of subjects map with more values
+            # number_of_subjects_grouped=df['number_of_subjects'].apply(
+            #     lambda x:
+            #     '<100' if x < 100 else
+            #     '100-<500' if x < 500 else
+            #     '500-<1000' if x < 1000 else
+            #     '1000-5000' if x < 5000 else
+            #     '5000-10000' if x < 10000 else
+            #     '10000-50000' if x < 50000 else
+            #     '>50000'
+            # ),
             funding_sources=df['funding_sources'].apply(
                 lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
             multiple_funding_sources=df['funding_sources'].apply(
@@ -194,10 +203,14 @@ class Command(PandasCommand):
             has_outcomes=df['outcomes'].notna(),
             planned_duration=planned_duration,
             planned_duration_quartiles=lambda x: get_quartiles(
-                x['planned_duration'])
+                x['planned_duration']),
             # NOTE: Only scraped has data_source_types
             # data_source_types=df['data_source_types'].apply(
             #     lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; ')
+            uses_established_data_source=df[['data_sources_registered_with_encepp',
+                                             'data_sources_not_registered_with_encepp']].notna().any(axis='columns'),
+            collaboration_with_research_network=df[['networks_encepp',
+                                                    'networks_not_encepp']].notna().any(axis='columns'),
         )
 
         return variables.sort_index(axis='columns')
@@ -205,17 +218,21 @@ class Command(PandasCommand):
     # def create_grouped_agg(self, df):
     #     import numpy as np
 
-    #     dummy_fields = ['state', 'risk_management_plan']
+    #     dummy_fields = ['updated_state', 'risk_management_plan']
     #     dummies = self.pd.get_dummies(df[dummy_fields]) \
     #         .rename(columns=self.python_name_converter)
 
     #     grouped = df.assign(
-    #         past_data_collection=lambda x: x['data_collection_date_actual'].notna() &
-    #         (x['data_collection_date_actual'] <= self.compare_datetime),
-    #         past_data_collection_has_protocol=lambda x: x['past_data_collection'] & x['has_protocol'],
-    #         past_final_report=lambda x: x['final_report_date_actual'].notna() &
-    #         (x['final_report_date_actual'] <= self.compare_datetime),
-    #         past_final_report_has_protocol=lambda x: x['past_final_report'] & x['has_result']
+    #         past_data_collection=lambda x:
+    #             x['data_collection_date_actual'].notna()
+    #             & (x['data_collection_date_actual'] <= self.compare_datetime),
+    #         past_data_collection_has_protocol=lambda x:
+    #             x['past_data_collection'] & x['has_protocol'],
+    #         two_weeks_past_final_report=lambda x:
+    #             x['final_report_date_actual'].notna()
+    #             & (x['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D')),
+    #         two_weeks_past_final_report_has_protocol=lambda x:
+    #             x['two_weeks_past_final_report'] & x['has_result']
     #     ).merge(dummies, left_index=True, right_index=True).groupby(by=self.group_by_field_name, dropna=False)
 
     #     def set_sum(x: PandasCommand.pd.Series):
@@ -227,48 +244,35 @@ class Command(PandasCommand):
     #     def setify(x: PandasCommand.pd.Series):
     #         return '; '.join(sorted(list(set(x.dropna().apply(list).sum()))))
 
-    #     def mean_mean(x):
-    #         return x.apply(np.mean).mean()
-
     #     dummie_agg = {
     #         f'number_of_studies_with_{col}': (col, bool_sum) for col in dummies
     #     }
 
-    #     percentage_agg = {
-    #         f'mean_{col}': (col, 'mean') for col in self.percentage_fields
-    #     }
-
     #     grouped_agg = grouped.agg(
-    #         number_of_collaborations_with_research_network=(
-    #             'collaboration_with_research_network', bool_sum),
+    #         # number_of_collaborations_with_research_network=(
+    #         #     'collaboration_with_research_network', bool_sum),
     #         number_of_countries=('countries', set_sum),
     #         set_of_countries=('countries', setify),
-    #         number_of_studies_with_follow_up=('follow_up', bool_sum),
     #         min_number_of_subjects=('number_of_subjects', 'min'),
     #         max_number_of_subjects=('number_of_subjects', 'max'),
     #         mean_number_of_subjects=('number_of_subjects', 'mean'),
     #         median_number_of_subjects=('number_of_subjects', 'median'),
-    #         number_of_studies_with_primary_outcomes=(
-    #             'primary_outcomes', bool_sum),
-    #         number_of_studies_with_secondary_outcomes=(
-    #             'secondary_outcomes', bool_sum),
+    #         number_of_studies_with_outcomes=('has_outcomes', bool_sum),
     #         number_of_studies_requested_by_regulator=(
     #             'requested_by_regulator', bool_sum),
-    #         number_of_studies_using_established_data_sources=(
-    #             'uses_established_data_source', bool_sum),
+    #         # number_of_studies_using_established_data_sources=(
+    #         #     'uses_established_data_source', bool_sum),
     #         **dummie_agg,
-    #         **percentage_agg,
-    #         mean_other_percentage=('funding_other_percentage', mean_mean),
     #         number_of_studies_with_result=('has_result', bool_sum),
     #         number_of_studies_with_protocol=('has_protocol', bool_sum),
     #         number_of_studies_with_past_data_collection=(
     #             'past_data_collection', bool_sum),
     #         number_of_studies_with_past_data_collection_and_protocol=(
     #             'past_data_collection_has_protocol', bool_sum),
-    #         number_of_studies_with_final_report=(
-    #             'past_final_report', bool_sum),
-    #         number_of_studies_with_past_final_report_and_protocol=(
-    #             'past_final_report_has_protocol', bool_sum)
+    #         number_of_studies_with_two_weeks_past_final_report=(
+    #             'two_weeks_past_final_report', bool_sum),
+    #         number_of_studies_with_two_weeks_past_final_report_and_protocol=(
+    #             'two_weeks_past_final_report_has_protocol', bool_sum)
     #     )
 
     #     sizes = grouped.size().rename('num_studies')
@@ -281,19 +285,19 @@ class Command(PandasCommand):
 
     def create_dummies(self, df, drop_references=True):
 
-        # 'collaboration_with_research_network': False
-        # 'uses_established_data_source': False
         dummy_without_na_drop_map = {
             'updated_state': 'Finalised',
             'study_type': 'Non-interventional study',
             'number_of_countries_grouped': 'Single Country',
             'multiple_funding_sources': False,
-            'has_medical_conditions': True,
             # NOTE: Combined Categories => Many categories: binary encoding? or less categories by grouping
-            # 'age_population': '18-64 years',
-            'age_population': '18+ years',
+            'age_population': '18-64 years; 65+ years',
             'number_of_subjects_grouped': '100-<500',
-            'has_outcomes': False
+            # NOTE: Other derived fields
+            'has_medical_conditions': True,
+            'has_outcomes': False,
+            'collaboration_with_research_network': False,
+            'uses_established_data_source': False
         }
 
         # Add 'study_topic': 'Human medicinal product'?
@@ -344,9 +348,15 @@ class Command(PandasCommand):
     #     binary_fields = [
     #         field
     #         for field in self.category_array_fields
-    #         if field not in ['data_source_types', 'study_topic', 'funding_sources',
-    #                          'non_interventional_scopes', 'non_interventional_study_design',
-    #                          'special_population']
+    #         if field not in [
+    #             'age_population',
+    #             'data_source_types',
+    #             'funding_sources',
+    #             'non_interventional_scopes',
+    #             'non_interventional_study_design',
+    #             'special_population',
+    #             # 'study_topic'
+    #         ]
     #     ]
 
     #     def column_renamer(x, field):
@@ -364,7 +374,9 @@ class Command(PandasCommand):
         # binaries = self.create_binaries(df)
         # encoded = self.pd.concat([dummies, binaries], axis='columns') \
         #     .assign(registration_date=df['registration_date'])
-        encoded = dummies.assign(registration_date=df['registration_date'])
+        # encoded = dummies.assign(registration_date=df['registration_date'])
+        encoded = dummies.assign(
+            registration_date=df['registration_date'] - 2010)
         return encoded
 
     def run_logit(self, df, y, var_col_map):
@@ -406,9 +418,9 @@ class Command(PandasCommand):
             # NOTE: This field should be single-valued (finalised) for studies with past final report date
             'updated_state',
             # NOTE: This field should only be true if the study is required by rmp?
-            'requested_by_regulator',
+            # 'requested_by_regulator',
             # NOTE: This field is only filled if the study is ongoing
-            'planned_duration'
+            # 'planned_duration'
         ]
 
         drop_high_corr = [
@@ -425,6 +437,7 @@ class Command(PandasCommand):
         import numpy as np
         import matplotlib as mpl
         import matplotlib.pyplot as plt
+        from statsmodels.iolib.table import SimpleTable
         from statsmodels.stats.proportion import proportion_confint
 
         self.logger = logging.getLogger()
@@ -593,8 +606,7 @@ class Command(PandasCommand):
 
         # self.logger.info('Generating and writing part 3 of analysis...')
         # data_to_group = variables.merge(
-        #     data.loc[:, [self.group_by_field_name, *self.percentage_fields,
-        #                  'funding_other_percentage', 'countries']],
+        #     data.loc[:, [self.group_by_field_name, 'countries']],
         #     left_index=True,
         #     right_index=True
         # )
@@ -663,14 +675,34 @@ class Command(PandasCommand):
                     model_result.save(
                         self.output_folder / folder_name / 'models' / subfolder_name / f'{file_name}.pickle')
 
+                    conf_odds_ratio = np.exp(model_result.conf_int()) \
+                        .rename(columns={0: '[0.025', 1: '0.975]'})
+                    odds_ratio = np.exp(model_result.params) \
+                        .rename('odds rt').to_frame()
+                    odds_ratio_data = np.round(
+                        self.pd.merge(
+                            odds_ratio,
+                            conf_odds_ratio,
+                            left_index=True,
+                            right_index=True
+                        ),
+                        decimals=4
+                    )
+
+                    table = SimpleTable(
+                        odds_ratio_data.values, odds_ratio_data.columns.to_list()
+                    )
+                    summary = model_result.summary()
+                    summary.tables[1].extend_right(table)
+
                     (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.txt') \
-                        .write_text(model_result.summary().as_text())
+                        .write_text(summary.as_text())
 
                     (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.html') \
-                        .write_text(model_result.summary().as_html())
+                        .write_text(summary.as_html())
 
                     (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.csv') \
-                        .write_text(model_result.summary().as_csv())
+                        .write_text(summary.as_csv())
 
             self.logger.info(
                 'Running univariate logistic regression and writing output...')

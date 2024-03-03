@@ -300,12 +300,16 @@ class Command(PandasCommand):
             .rename(columns=self.python_name_converter)
 
         grouped = df.assign(
-            past_data_collection=lambda x: x['data_collection_date_actual'].notna() &
-            (x['data_collection_date_actual'] <= self.compare_datetime),
-            past_data_collection_has_protocol=lambda x: x['past_data_collection'] & x['has_protocol'],
-            past_final_report=lambda x: x['final_report_date_actual'].notna() &
-            (x['final_report_date_actual'] <= self.compare_datetime),
-            past_final_report_has_protocol=lambda x: x['past_final_report'] & x['has_result']
+            past_data_collection=lambda x:
+                x['data_collection_date_actual'].notna()
+                & (x['data_collection_date_actual'] <= self.compare_datetime),
+            past_data_collection_has_protocol=lambda x:
+                x['past_data_collection'] & x['has_protocol'],
+            two_weeks_past_final_report=lambda x:
+                x['final_report_date_actual'].notna()
+                & (x['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D')),
+            two_weeks_past_final_report_has_protocol=lambda x:
+                x['two_weeks_past_final_report'] & x['has_result']
         ).merge(dummies, left_index=True, right_index=True).groupby(by=self.group_by_field_name, dropna=False)
 
         def set_sum(x: PandasCommand.pd.Series):
@@ -355,10 +359,10 @@ class Command(PandasCommand):
                 'past_data_collection', bool_sum),
             number_of_studies_with_past_data_collection_and_protocol=(
                 'past_data_collection_has_protocol', bool_sum),
-            number_of_studies_with_final_report=(
-                'past_final_report', bool_sum),
-            number_of_studies_with_past_final_report_and_protocol=(
-                'past_final_report_has_protocol', bool_sum)
+            number_of_studies_with_two_weeks_past_final_report=(
+                'two_weeks_past_final_report', bool_sum),
+            number_of_studies_with_two_weeks_past_final_report_and_protocol=(
+                'two_weeks_past_final_report_has_protocol', bool_sum)
         )
 
         sizes = grouped.size().rename('num_studies')
