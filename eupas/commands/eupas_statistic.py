@@ -142,18 +142,6 @@ class Command(PandasCommand):
     def create_variables(self, df):
         import numpy as np
 
-        # age_map = {
-        #     'Preterm newborns': '<2 years',
-        #     'Term newborns (0-27 days)': '<2 years',
-        #     'Infants and toddlers (28 days - 23 months)': '<2 years',
-        #     'Children (2 - 11 years)': '2-17 years',
-        #     'Adolescents (12 - 17 years)': '2-17 years',
-        #     'Adults (18 - 44 years)': '18-64 years',
-        #     'Adults (45 - 64 years)': '18-64 years',
-        #     'Adults (65 - 74 years)': '65+ years',
-        #     'Adults (75 years and over)': '65+ years'
-        # }
-
         age_map = {
             'Preterm newborns': '<18 years',
             'Term newborns (0-27 days)': '<18 years',
@@ -252,12 +240,21 @@ class Command(PandasCommand):
         # NOTE: There are some studies with negative planned_duration
         planned_duration[planned_duration <= np.timedelta64(0)] = self.pd.NA
 
+        actual_duration = df.loc[
+            df['final_report_date_actual'].notna()
+            & df['data_collection_date_actual'].notna(),
+            ['data_collection_date_actual', 'final_report_date_actual']] \
+            .diff(axis='columns').iloc[:, -1]
+        # NOTE: There are actually no studies with negative actual_duration
+        actual_duration[actual_duration <= np.timedelta64(0)] = self.pd.NA
+
         def get_quartiles(s):
             result = (self.pd.qcut(s, 4, labels=False, duplicates='drop') + 1) \
                 .fillna(0.0).astype(int)
             return np.where(result == 0, self.pd.NA, result)
 
         variables = variables.assign(
+            updated_state=df['$UPDATED_state'],
             registration_date=df['registration_date'].dt.year,
             study_type=df['study_type'].str.split(r'; |: ').str[0],
             number_of_countries=df['countries'].apply(len),
@@ -287,7 +284,10 @@ class Command(PandasCommand):
                 lambda designs: '; '.join(sorted(list({x if x in study_design_list else 'Other' for x in designs})))),
             planned_duration=planned_duration,
             planned_duration_quartiles=lambda x: get_quartiles(
-                x['planned_duration'])
+                x['planned_duration']),
+            actual_duration=actual_duration,
+            actual_duration_quartiles=lambda x: get_quartiles(
+                x['actual_duration'])
         )
 
         return variables.sort_index(axis='columns')
@@ -377,6 +377,7 @@ class Command(PandasCommand):
 
         dummy_without_na_drop_map = {
             'state': 'Finalised',
+            # 'updated_state': 'Finalised',
             'study_type': 'Observational study',
             'collaboration_with_research_network': False,
             'country_type': 'National study',
@@ -387,7 +388,7 @@ class Command(PandasCommand):
             'multiple_funding_sources': False,
             'medical_conditions': True,
             # NOTE: Combined Categories => Many categories: binary encoding? or less categories by grouping
-            # 'age_population': '18-64 years',
+            'age_population': '18-64 years; 65+ years',
             # NOTE: Combined Categories => But only 3 possible combinations
             'sex_population': 'Male; Female',
             'number_of_subjects_grouped': '100-<500',
@@ -501,12 +502,12 @@ class Command(PandasCommand):
             'number_of_countries_grouped',
             # NOTE: This field should be single-valued (finalised) for studies with past final report date
             'state',
-            # NOTE: This field should only be true if the study is required by rmp?
-            'requested_by_regulator',
-            # NOTE: This field is only filled if the study is ongoing
-            'planned_duration',
             # NOTE: This field can only be true if there are primary outcomes (merge the variables?)
             'secondary_outcomes'
+            # NOTE: High p-values
+            # 'planned_duration', 'actual_duration',
+            'has_medical_conditions',  # NOTE: High LLR p-value
+            'has_outcomes'  # NOTE: High LLR p-value
         ]
 
         drop_high_corr = [
@@ -666,7 +667,7 @@ class Command(PandasCommand):
                                 percentage=df.apply(
                                     lambda x: x.value_counts(normalize=True) * 100),
                                 confidence_interval=lambda x: x['absolute'].apply(
-                                    lambda y: [z * 100 for z in proportion_confint(y, len(df), alpha=0.05, method='beta')])
+                                    lambda y: [z * 100 for z in proportion_confint(y, len(df), alpha=alpha, method='beta')])
                         ).reset_index()
 
                     # Absolute and relative frequencies (with 95%-CI) of categories with protocols or results
@@ -721,7 +722,7 @@ class Command(PandasCommand):
                 (variables_two_weeks_past_final_report, 'has_result', 'results')]:
 
             self.logger.info(
-                f'Starting univariate logistic regression for {y_label}...')
+                f'Starting logistic regression for {y_label}...')
             self.logger.info(
                 'Generating and writing encoded variables for logistic regression...')
             encoded = self.encode_variables(df)
@@ -825,9 +826,7 @@ class Command(PandasCommand):
         for col in ['number_of_countries', 'number_of_subjects']:
             plt.figure(figsize=(5, 10), dpi=300)
             variables[col].plot(
-                kind='box', title=f'Boxplot of study categories by "{self.excel_name_converter(col)}"',)
-            # sns.violinplot(
-            #     data=variables[col], bw_adjust=.5, cut=1, linewidth=1, palette="Set3")
+                kind='box', title=f'Boxplot of study categories by "{self.excel_name_converter(col)}"')
             plt.savefig(self.output_folder / 'plots' / f'{col}_boxplot.png')
 
         plt.figure(figsize=(15, 3), dpi=300)

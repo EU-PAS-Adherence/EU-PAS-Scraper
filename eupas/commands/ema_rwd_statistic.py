@@ -111,22 +111,7 @@ class Command(PandasCommand):
     def create_variables(self, df):
         import numpy as np
 
-        age_map = {
-            'Preterm newborn infants (0 – 27 days)': '<18 years',
-            'Term newborn infants (0 – 27 days)': '<18 years',
-            'Infants and toddlers (28 days – 23 months)': '<18 years',
-            'Children (2 to < 12 years)': '<18 years',
-            'Adolescents (12 to < 18 years)': '<18 years',
-            'Paediatric Population (< 18 years)': '<18 years',
-            'Adults (18 to < 46 years)': '18-64 years',
-            'Adults (46 to < 65 years)': '18-64 years',
-            'Adults (65 to < 75 years)': '65+ years',
-            'Adults (75 to < 85 years)': '65+ years',
-            'Adults (85 years and over)': '65+ years',
-            'Elderly (≥ 65 years)': '65+ years'
-        }
-
-        # NOTE: Age map with two values
+        # NOTE: Age map with two values instead of three
         # age_map = {
         #     'Preterm newborn infants (0 – 27 days)': '<18 years',
         #     'Term newborn infants (0 – 27 days)': '<18 years',
@@ -142,6 +127,21 @@ class Command(PandasCommand):
         #     'Elderly (≥ 65 years)': '18+ years'
         # }
 
+        age_map = {
+            'Preterm newborn infants (0 – 27 days)': '<18 years',
+            'Term newborn infants (0 – 27 days)': '<18 years',
+            'Infants and toddlers (28 days – 23 months)': '<18 years',
+            'Children (2 to < 12 years)': '<18 years',
+            'Adolescents (12 to < 18 years)': '<18 years',
+            'Paediatric Population (< 18 years)': '<18 years',
+            'Adults (18 to < 46 years)': '18-64 years',
+            'Adults (46 to < 65 years)': '18-64 years',
+            'Adults (65 to < 75 years)': '65+ years',
+            'Adults (75 to < 85 years)': '65+ years',
+            'Adults (85 years and over)': '65+ years',
+            'Elderly (≥ 65 years)': '65+ years'
+        }
+
         variables = df.loc[:, [
             'study_type', 'state', 'risk_management_plan',
             'requested_by_regulator', 'number_of_subjects'
@@ -155,6 +155,14 @@ class Command(PandasCommand):
         # NOTE: There are some studies with negative planned_duration
         planned_duration[planned_duration <= np.timedelta64(0)] = self.pd.NA
 
+        actual_duration = df.loc[
+            df['final_report_date_actual'].notna()
+            & df['data_collection_date_actual'].notna(),
+            ['data_collection_date_actual', 'final_report_date_actual']] \
+            .diff(axis='columns').iloc[:, -1]
+        # NOTE: There are actually no studies with negative actual_duration
+        actual_duration[actual_duration <= np.timedelta64(0)] = self.pd.NA
+
         def get_quartiles(s):
             result = (self.pd.qcut(s, 4, labels=False, duplicates='drop') + 1) \
                 .fillna(0.0).astype(int)
@@ -166,6 +174,22 @@ class Command(PandasCommand):
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
                 lambda x: 'Single Country' if len(x) == 1 else 'Multiple Countries'),
+            # NOTE: Number of subjects map with 4 values instead of 5
+            # number_of_subjects_grouped=df['number_of_subjects'].apply(
+            #     lambda x:
+            #     '<100' if x < 100 else
+            #     '100-<1000' if x < 1000 else
+            #     '1000-10000' if x < 10000 else
+            #     '>10000'
+            # ),
+            # number_of_subjects_grouped=df['number_of_subjects'].apply(
+            #     lambda x:
+            #     '<500' if x < 500 else
+            #     '500-<1000' if x < 1000 else
+            #     '1000-<5000' if x < 5000 else
+            #     '5000-<15000' if x < 15000 else
+            #     '>15000'
+            # ),
             number_of_subjects_grouped=df['number_of_subjects'].apply(
                 lambda x:
                 '<100' if x < 100 else
@@ -174,7 +198,7 @@ class Command(PandasCommand):
                 '1000-10000' if x < 10000 else
                 '>10000'
             ),
-            # NOTE: Number of subjects map with more values
+            # NOTE: Number of subjects map with 7 values instead of 5
             # number_of_subjects_grouped=df['number_of_subjects'].apply(
             #     lambda x:
             #     '<100' if x < 100 else
@@ -204,13 +228,16 @@ class Command(PandasCommand):
             planned_duration=planned_duration,
             planned_duration_quartiles=lambda x: get_quartiles(
                 x['planned_duration']),
-            # NOTE: Only scraped has data_source_types
-            # data_source_types=df['data_source_types'].apply(
-            #     lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; ')
+            actual_duration=actual_duration,
+            actual_duration_quartiles=lambda x: get_quartiles(
+                x['actual_duration']),
             uses_established_data_source=df[['data_sources_registered_with_encepp',
                                              'data_sources_not_registered_with_encepp']].notna().any(axis='columns'),
             collaboration_with_research_network=df[['networks_encepp',
                                                     'networks_not_encepp']].notna().any(axis='columns'),
+            # NOTE: Only scraped has data_source_types
+            # data_source_types=df['data_source_types'].apply(
+            #     lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; ')
         )
 
         return variables.sort_index(axis='columns')
@@ -292,25 +319,26 @@ class Command(PandasCommand):
             'multiple_funding_sources': False,
             # NOTE: Combined Categories => Many categories: binary encoding? or less categories by grouping
             'age_population': '18-64 years; 65+ years',
+            # 'age_population': '18+ years',
             'number_of_subjects_grouped': '100-<500',
-            # NOTE: Other derived fields
+            # 'number_of_subjects_grouped': '<500',
             'has_medical_conditions': True,
             'has_outcomes': False,
             'collaboration_with_research_network': False,
             'uses_established_data_source': False
         }
 
-        # Add 'study_topic': 'Human medicinal product'?
         dummy_with_na_drop_map = {
+            'planned_duration_quartiles': 1,
+            'actual_duration_quartiles': 1,
+            'requested_by_regulator': False,
+            'risk_management_plan': 'Not applicable',
             # NOTE: Combined Categories => Many categories: binary encoding?; Also one single NA field!
             # 'funding_sources': 'Pharmaceutical company and other private sector ',
             # NOTE: Combined Categories => Many categories: binary encoding?
             # 'non_interventional_scopes': 'Assessment of risk minimisation measure implementation or effectiveness',
             # NOTE: Combined Categories => Many categories: binary encoding?
             # 'non_interventional_study_design': 'Cohort',
-            'planned_duration_quartiles': 1,
-            'requested_by_regulator': False,
-            'risk_management_plan': 'Not applicable',
             # NOTE: Combined Categories => Many categories: binary encoding?
             # 'special_population': str(np.nan)
         }
@@ -374,9 +402,9 @@ class Command(PandasCommand):
         # binaries = self.create_binaries(df)
         # encoded = self.pd.concat([dummies, binaries], axis='columns') \
         #     .assign(registration_date=df['registration_date'])
-        # encoded = dummies.assign(registration_date=df['registration_date'])
-        encoded = dummies.assign(
-            registration_date=df['registration_date'] - 2010)
+        encoded = dummies.assign(registration_date=df['registration_date'])
+        # encoded = dummies.assign(
+        #     registration_date=df['registration_date'] - 2010)
         return encoded
 
     def run_logit(self, df, y, var_col_map):
@@ -416,11 +444,11 @@ class Command(PandasCommand):
     def multivariate_lr(self, df, y):
         high_corr_fiels = [
             # NOTE: This field should be single-valued (finalised) for studies with past final report date
-            'updated_state',
-            # NOTE: This field should only be true if the study is required by rmp?
-            # 'requested_by_regulator',
-            # NOTE: This field is only filled if the study is ongoing
-            # 'planned_duration'
+            # 'updated_state',
+            # NOTE: High p-values
+            # 'planned_duration', 'actual_duration',
+            'has_medical_conditions',  # NOTE: High LLR p-value
+            'has_outcomes'  # NOTE: High LLR p-value
         ]
 
         drop_high_corr = [
@@ -437,6 +465,7 @@ class Command(PandasCommand):
         import numpy as np
         import matplotlib as mpl
         import matplotlib.pyplot as plt
+        # import statsmodels.formula.api as smf
         from statsmodels.iolib.table import SimpleTable
         from statsmodels.stats.proportion import proportion_confint
 
@@ -579,7 +608,7 @@ class Command(PandasCommand):
                                 percentage=df.apply(
                                     lambda x: x.value_counts(normalize=True) * 100),
                                 confidence_interval=lambda x: x['absolute'].apply(
-                                    lambda y: [z * 100 for z in proportion_confint(y, len(df), alpha=0.05, method='beta')])
+                                    lambda y: [z * 100 for z in proportion_confint(y, len(df), alpha=alpha, method='beta')])
                         ).reset_index()
 
                     # Absolute and relative frequencies (with 95%-CI) of categories with protocols or results
@@ -633,7 +662,7 @@ class Command(PandasCommand):
                 (variables_two_weeks_past_final_report, 'has_result', 'results')]:
 
             self.logger.info(
-                f'Starting univariate logistic regression for {y_label}...')
+                f'Starting logistic regression for {y_label}...')
             self.logger.info(
                 'Generating and writing encoded variables for logistic regression...')
             encoded = self.encode_variables(df)
@@ -704,6 +733,27 @@ class Command(PandasCommand):
                     (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.csv') \
                         .write_text(summary.as_csv())
 
+            # self.logger.info(
+            #     'Testing univariate logistic regression assumptions and writing output...')
+            # linearity_check_df = self.pd.DataFrame().assign(
+            #     registration_date=df['registration_date'] - 2010,
+            #     registration_date_log=lambda x: x['registration_date'].apply(
+            #         lambda y: y * np.log(y))
+            # ).merge(
+            #     y,
+            #     left_index=True,
+            #     right_index=True,
+            #     how='right'
+            # )
+
+            # lr_result = smf.logit(f'{y_label} ~ registration_date + registration_date_log', linearity_check_df).fit(
+            #     method='newton',
+            #     maxiter=1000,
+            #     warn_convergence=True,
+            #     disp=False  # NOTE: Set to true/false to enable/disable printing convergence messages
+            # )
+            # print(lr_result.summary())
+
             self.logger.info(
                 'Running univariate logistic regression and writing output...')
             results = self.univariate_lr(encoded_y, y_label)
@@ -757,9 +807,7 @@ class Command(PandasCommand):
         for col in ['number_of_countries', 'number_of_subjects']:
             plt.figure(figsize=(5, 10), dpi=300)
             variables[col].plot(
-                kind='box', title=f'Boxplot of study categories by "{self.excel_name_converter(col)}"',)
-            # sns.violinplot(
-            #     data=variables[col], bw_adjust=.5, cut=1, linewidth=1, palette="Set3")
+                kind='box', title=f'Boxplot of study categories by "{self.excel_name_converter(col)}"')
             plt.savefig(self.output_folder / 'plots' / f'{col}_boxplot.png')
 
         plt.figure(figsize=(15, 3), dpi=300)
