@@ -174,14 +174,7 @@ class Command(PandasCommand):
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
                 lambda x: 'Single Country' if len(x) == 1 else 'Multiple Countries'),
-            # NOTE: Number of subjects map with 4 values instead of 5
-            # number_of_subjects_grouped=df['number_of_subjects'].apply(
-            #     lambda x:
-            #     '<100' if x < 100 else
-            #     '100-<1000' if x < 1000 else
-            #     '1000-10000' if x < 10000 else
-            #     '>10000'
-            # ),
+            # NOTE: Number of subjects map with other categories
             # number_of_subjects_grouped=df['number_of_subjects'].apply(
             #     lambda x:
             #     '<500' if x < 500 else
@@ -443,12 +436,12 @@ class Command(PandasCommand):
 
     def multivariate_lr(self, df, y):
         high_corr_fiels = [
-            # NOTE: This field should be single-valued (finalised) for studies with past final report date
+            # NOTE: This field should is single-valued (finalised) for studies with past final report date
+            #       and is automatically excluded as a reference value
             # 'updated_state',
-            # NOTE: High p-values
-            # 'planned_duration', 'actual_duration',
-            'has_medical_conditions',  # NOTE: High LLR p-value
-            'has_outcomes'  # NOTE: High LLR p-value
+            'actual_duration_quartiles',  # NOTE: High VIF (>10)
+            'has_medical_conditions',  # NOTE: High LLR p-value (>0.25)
+            'has_outcomes'  # NOTE: High LLR p-value (>0.25)
         ]
 
         drop_high_corr = [
@@ -462,12 +455,17 @@ class Command(PandasCommand):
 
     def run(self, args, opts):
         super().run(args, opts)
+
         import numpy as np
-        import matplotlib as mpl
+        # import matplotlib as mpl
         import matplotlib.pyplot as plt
+        import seaborn as sns
         # import statsmodels.formula.api as smf
         from statsmodels.iolib.table import SimpleTable
         from statsmodels.stats.proportion import proportion_confint
+
+        # mpl.style.use('bmh')
+        sns.set_theme(context="paper", style="whitegrid")
 
         self.logger = logging.getLogger()
         self.logger.info('Starting statistic script')
@@ -496,11 +494,18 @@ class Command(PandasCommand):
         self.write_output(data, '_statistics_preprocessed')
         self.write_output(variables, '_statistics_variables')
 
-        variables_past_data_collection = variables[variables['data_collection_date_actual'].notna(
-        ) & (variables['data_collection_date_actual'] <= self.compare_datetime)]
+        # NOTE: This is the population of studies, which should have protocols available
+        variables_past_data_collection = variables[
+            variables['data_collection_date_actual'].notna() &
+            (variables['data_collection_date_actual'] <= self.compare_datetime)
+        ]
 
-        variables_two_weeks_past_final_report = variables[variables['final_report_date_actual'].notna(
-        ) & (variables['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D'))]
+        # NOTE: This is the population of studies, which should have results available
+        variables_two_weeks_past_final_report = variables[
+            variables['final_report_date_actual'].notna() &
+            (variables['final_report_date_actual'] <=
+             self.compare_datetime - np.timedelta64(14, 'D'))
+        ]
 
         variables_past_data_collection_without_two_weeks_past_final_report = \
             variables_past_data_collection[
@@ -576,8 +581,10 @@ class Command(PandasCommand):
                                 startcol=4 + col_offset
                             )
 
+                    # Frequencies of categories without NA
                     calculate_and_write_frequencies(df, col, writer)
                     if df.loc[:, [col]].isna().any().loc[col]:
+                        # Frequencies of categories with NA
                         calculate_and_write_frequencies(
                             df, col, writer, dropna=False,
                             col_offset=8 if col in self.category_array_fields else 4
@@ -642,27 +649,13 @@ class Command(PandasCommand):
         # grouped_agg = self.create_grouped_agg(data_to_group)
         # self.write_output(grouped_agg, '_statistics_centre_all')
 
-        self.logger.info(
-            'Generating and writing correlation matrix for logistic regression...')
-        y = variables.loc[:, ['has_protocol', 'has_result']].astype(int)
-        encoded_all = self.encode_variables(
-            variables, drop_references=False)
-        encoded_all_y = encoded_all.merge(
-            y,
-            left_index=True,
-            right_index=True,
-            how='right'
-        )
-        correlations_all = encoded_all_y.corr()
-        self.write_output(
-            correlations_all, '_statistics_encoded_variables_correlations_all')
-
         for df, y_label, name in [
                 (variables_past_data_collection, 'has_protocol', 'protocol'),
                 (variables_two_weeks_past_final_report, 'has_result', 'results')]:
 
             self.logger.info(
                 f'Starting logistic regression for {y_label}...')
+
             self.logger.info(
                 'Generating and writing encoded variables for logistic regression...')
             encoded = self.encode_variables(df)
@@ -678,21 +671,25 @@ class Command(PandasCommand):
 
             self.logger.info(
                 'Generating and writing correlations for logistic regression...')
-            encoded_with_references = self.encode_variables(
-                df, drop_references=False)
-            encoded_with_references_y = encoded_with_references.merge(
+            correlations = self.encode_variables(
+                df,
+                drop_references=False
+            ).merge(
                 y,
                 left_index=True,
                 right_index=True,
                 how='right'
-            )
-
-            correlations_y = encoded_with_references_y \
-                .corr(method='pearson')[y_label] \
-                .drop(y_label) \
-                .rename(f'{y_label}_pearson_correlation_coefficient')
+            ).corr(method='pearson')
             self.write_output(
-                correlations_y.to_frame(), f'_statistics_encoded_variables_correlations_for_{name}_model')
+                correlations, f'_statistics_encoded_variables_correlations_for_{name}_model')
+
+            fig, ax = plt.subplots(figsize=(20, 15), dpi=300)
+            ax.set_title('Correlations (Pearson)')
+            mask = np.triu(np.ones_like(correlations, dtype=bool))
+            sns.heatmap(correlations, mask=mask, cmap='RdBu', vmax=.3, center=0,
+                        square=True, linewidths=.5, cbar_kws={"shrink": .5}, ax=ax)
+            fig.savefig(self.output_folder / 'plots' /
+                        f'correlation_heatmap_for_{name}_model.png', bbox_inches='tight')
 
             def save_model_results(results, folder_name, subfolder_name):
                 (self.output_folder / folder_name / 'models' /
@@ -734,9 +731,10 @@ class Command(PandasCommand):
                         .write_text(summary.as_csv())
 
             # self.logger.info(
-            #     'Testing univariate logistic regression assumptions and writing output...')
-            # linearity_check_df = self.pd.DataFrame().assign(
-            #     registration_date=df['registration_date'] - 2010,
+            #     'Testing logistic regression assumptions and writing output...')
+            # box_tidwell_df = self.pd.DataFrame().assign(
+            #     registration_date=df['registration_date'] -
+            #     df['registration_date'].min() + 1,
             #     registration_date_log=lambda x: x['registration_date'].apply(
             #         lambda y: y * np.log(y))
             # ).merge(
@@ -746,13 +744,15 @@ class Command(PandasCommand):
             #     how='right'
             # )
 
-            # lr_result = smf.logit(f'{y_label} ~ registration_date + registration_date_log', linearity_check_df).fit(
+            # box_tidwell_df.to_excel(f'test_{y_label}.xlsx')
+
+            # box_tidwell_result = smf.logit(f'{y_label} ~ registration_date + registration_date_log', box_tidwell_df).fit(
             #     method='newton',
             #     maxiter=1000,
             #     warn_convergence=True,
             #     disp=False  # NOTE: Set to true/false to enable/disable printing convergence messages
             # )
-            # print(lr_result.summary())
+            # print(box_tidwell_result.summary())
 
             self.logger.info(
                 'Running univariate logistic regression and writing output...')
@@ -764,19 +764,8 @@ class Command(PandasCommand):
             results = self.multivariate_lr(encoded_y, y_label)
             save_model_results(results, 'multivariate_models', name)
 
-        self.logger.info('Generating and writing plots...')
+        self.logger.info('Generating and writing extra plots...')
         (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)
-        mpl.style.use('bmh')
-
-        import seaborn as sns
-        sns.set_theme(context="paper", style="whitegrid")
-        fig, ax = plt.subplots(figsize=(20, 15), dpi=300)
-        ax.set_title('Correlations (Pearson)')
-        mask = np.triu(np.ones_like(correlations_all, dtype=bool))
-        sns.heatmap(correlations_all, mask=mask, cmap='RdBu', vmax=.3, center=0,
-                    square=True, linewidths=.5, cbar_kws={"shrink": .5}, ax=ax)
-        fig.savefig(self.output_folder / 'plots' /
-                    'correlation_heatmap.png', bbox_inches='tight')
 
         plt.figure(dpi=300)
         date = data['registration_date'].dt.to_period('M')

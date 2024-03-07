@@ -521,10 +521,17 @@ class Command(PandasCommand):
 
     def run(self, args, opts):
         super().run(args, opts)
+
         import numpy as np
-        import matplotlib as mpl
+        # import matplotlib as mpl
         import matplotlib.pyplot as plt
+        import seaborn as sns
+        # import statsmodels.formula.api as smf
+        from statsmodels.iolib.table import SimpleTable
         from statsmodels.stats.proportion import proportion_confint
+
+        # mpl.style.use('bmh')
+        sns.set_theme(context="paper", style="whitegrid")
 
         self.logger = logging.getLogger()
         self.logger.info('Starting statistic script')
@@ -555,11 +562,18 @@ class Command(PandasCommand):
         self.write_output(data, '_statistics_preprocessed')
         self.write_output(variables, '_statistics_variables')
 
-        variables_past_data_collection = variables[variables['data_collection_date_actual'].notna(
-        ) & (variables['data_collection_date_actual'] <= self.compare_datetime)]
+        # NOTE: This is the population of studies, which should have protocols available
+        variables_past_data_collection = variables[
+            variables['data_collection_date_actual'].notna() &
+            (variables['data_collection_date_actual'] <= self.compare_datetime)
+        ]
 
-        variables_two_weeks_past_final_report = variables[variables['final_report_date_actual'].notna(
-        ) & (variables['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D'))]
+        # NOTE: This is the population of studies, which should have results available
+        variables_two_weeks_past_final_report = variables[
+            variables['final_report_date_actual'].notna() &
+            (variables['final_report_date_actual'] <=
+             self.compare_datetime - np.timedelta64(14, 'D'))
+        ]
 
         variables_past_data_collection_without_two_weeks_past_final_report = \
             variables_past_data_collection[
@@ -635,8 +649,10 @@ class Command(PandasCommand):
                                 startcol=4 + col_offset
                             )
 
+                    # Frequencies of categories without NA
                     calculate_and_write_frequencies(df, col, writer)
                     if df.loc[:, [col]].isna().any().loc[col]:
+                        # Frequencies of categories with NA
                         calculate_and_write_frequencies(
                             df, col, writer, dropna=False,
                             col_offset=8 if col in self.category_array_fields else 4
@@ -702,27 +718,13 @@ class Command(PandasCommand):
         grouped_agg = self.create_grouped_agg(data_to_group)
         self.write_output(grouped_agg, '_statistics_centre_all')
 
-        self.logger.info(
-            'Generating and writing correlation matrix for logistic regression...')
-        y = variables.loc[:, ['has_protocol', 'has_result']].astype(int)
-        encoded_all = self.encode_variables(
-            variables, drop_references=False)
-        encoded_all_y = encoded_all.merge(
-            y,
-            left_index=True,
-            right_index=True,
-            how='right'
-        )
-        correlations_all = encoded_all_y.corr()
-        self.write_output(
-            correlations_all, '_statistics_encoded_variables_correlations_all')
-
         for df, y_label, name in [
                 (variables_past_data_collection, 'has_protocol', 'protocol'),
                 (variables_two_weeks_past_final_report, 'has_result', 'results')]:
 
             self.logger.info(
                 f'Starting logistic regression for {y_label}...')
+
             self.logger.info(
                 'Generating and writing encoded variables for logistic regression...')
             encoded = self.encode_variables(df)
@@ -738,21 +740,25 @@ class Command(PandasCommand):
 
             self.logger.info(
                 'Generating and writing correlations for logistic regression...')
-            encoded_with_references = self.encode_variables(
-                df, drop_references=False)
-            encoded_with_references_y = encoded_with_references.merge(
+            correlations = self.encode_variables(
+                df,
+                drop_references=False
+            ).merge(
                 y,
                 left_index=True,
                 right_index=True,
                 how='right'
-            )
-
-            correlations_y = encoded_with_references_y \
-                .corr(method='pearson')[y_label] \
-                .drop(y_label) \
-                .rename(f'{y_label}_pearson_correlation_coefficient')
+            ).corr(method='pearson')
             self.write_output(
-                correlations_y.to_frame(), f'_statistics_encoded_variables_correlations_for_{name}_model')
+                correlations, f'_statistics_encoded_variables_correlations_for_{name}_model')
+
+            fig, ax = plt.subplots(figsize=(20, 15), dpi=300)
+            ax.set_title('Correlations (Pearson)')
+            mask = np.triu(np.ones_like(correlations, dtype=bool))
+            sns.heatmap(correlations, mask=mask, cmap='RdBu', vmax=.3, center=0,
+                        square=True, linewidths=.5, cbar_kws={"shrink": .5}, ax=ax)
+            fig.savefig(self.output_folder / 'plots' /
+                        f'correlation_heatmap_for_{name}_model.png', bbox_inches='tight')
 
             def save_model_results(results, folder_name, subfolder_name):
                 (self.output_folder / folder_name / 'models' /
@@ -764,14 +770,34 @@ class Command(PandasCommand):
                     model_result.save(
                         self.output_folder / folder_name / 'models' / subfolder_name / f'{file_name}.pickle')
 
+                    conf_odds_ratio = np.exp(model_result.conf_int()) \
+                        .rename(columns={0: '[0.025', 1: '0.975]'})
+                    odds_ratio = np.exp(model_result.params) \
+                        .rename('odds rt').to_frame()
+                    odds_ratio_data = np.round(
+                        self.pd.merge(
+                            odds_ratio,
+                            conf_odds_ratio,
+                            left_index=True,
+                            right_index=True
+                        ),
+                        decimals=4
+                    )
+
+                    table = SimpleTable(
+                        odds_ratio_data.values, odds_ratio_data.columns.to_list()
+                    )
+                    summary = model_result.summary()
+                    summary.tables[1].extend_right(table)
+
                     (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.txt') \
-                        .write_text(model_result.summary().as_text())
+                        .write_text(summary.as_text())
 
                     (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.html') \
-                        .write_text(model_result.summary().as_html())
+                        .write_text(summary.as_html())
 
                     (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.csv') \
-                        .write_text(model_result.summary().as_csv())
+                        .write_text(summary.as_csv())
 
             self.logger.info(
                 'Running univariate logistic regression and writing output...')
@@ -783,19 +809,8 @@ class Command(PandasCommand):
             results = self.multivariate_lr(encoded_y, y_label)
             save_model_results(results, 'multivariate_models', name)
 
-        self.logger.info('Generating and writing plots...')
+        self.logger.info('Generating and writing extra plots...')
         (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)
-        mpl.style.use('bmh')
-
-        import seaborn as sns
-        sns.set_theme(context="paper", style="whitegrid")
-        fig, ax = plt.subplots(figsize=(20, 15), dpi=300)
-        ax.set_title('Correlations (Pearson)')
-        mask = np.triu(np.ones_like(correlations_all, dtype=bool))
-        sns.heatmap(correlations_all, mask=mask, cmap='RdBu', vmax=.3, center=0,
-                    square=True, linewidths=.5, cbar_kws={"shrink": .5}, ax=ax)
-        fig.savefig(self.output_folder / 'plots' /
-                    'correlation_heatmap.png', bbox_inches='tight')
 
         plt.figure(dpi=300)
         date = data['registration_date'].dt.to_period('M')
