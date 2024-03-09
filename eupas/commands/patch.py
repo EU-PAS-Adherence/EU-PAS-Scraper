@@ -103,6 +103,12 @@ class Command(PandasCommand):
             action="store_true",
             help="adds additional cancel fields"
         )
+        patch.add_argument(
+            "-sc",
+            "--save-cancel-samples",
+            action="store_true",
+            help="saves samples to check sensitivity of cancel field"
+        )
 
     def process_options(self, args, opts):
         PandasCommand.process_options(self, args, opts)
@@ -127,6 +133,7 @@ class Command(PandasCommand):
         # State Update
         self.update_state_enabled = 'state' in args
         self.add_cancel_fields_enabled = self.update_state_enabled and opts.add_cancel_fields
+        self.save_cancel_samples_enabled = self.update_state_enabled and opts.save_cancel_samples
 
     def syntax(self):
         return "patch_name [options]"
@@ -241,12 +248,10 @@ class Command(PandasCommand):
             self.logger.info('Start updating states')
             data[self.study_cancelled_meta_field_name] = data['description'].str \
                 .contains('|'.join(self.study_cancelled_patterns), case=False)
+            data[f'{self.study_cancelled_meta_field_name}_MANUAL'] = data[self.study_cancelled_meta_field_name]
 
             data = data.assign(**{
-                self.updated_state_meta_field_name: np.where(
-                    data[self.study_cancelled_meta_field_name].astype(bool)
-                    & data[self.study_cancelled_meta_field_name].notna(),
-                    'Cancelled',
+                self.updated_state_meta_field_name:
                     np.where(
                         data['final_report_date_actual'].notna(),
                         'Finalised',
@@ -260,8 +265,7 @@ class Command(PandasCommand):
                                 self.pd.NA
                             )
                         )
-                    )
-                ),
+                    ),
                 f'{self.updated_state_meta_field_name}_eq_state': lambda x: x[self.updated_state_meta_field_name] == x['state']
             })
             self.logger.info('Finished updating states')
@@ -284,6 +288,18 @@ class Command(PandasCommand):
                     .apply(lambda x: '; '.join([str(y) for y in x.values if not re.match(r'nan|[.!?]+', str(y))]), axis='columns')
 
                 self.logger.info('Finished adding detailed cancel fields')
+
+            if self.save_cancel_samples_enabled:
+                self.logger.info(
+                    'Start generating samples to check sensitivity of cancel fields')
+                samples = data.loc[
+                    ~data[self.study_cancelled_meta_field_name].astype(bool)
+                ].sample(
+                    n=100,
+                    random_state=123  # NOTE: For reproducibility
+                )
+                self.write_output(samples, '_cancel_samples')
+                self.logger.info('Finished generating samples')
 
         self.logger.info('Writing output data...')
         self.write_output(data, '_patched')

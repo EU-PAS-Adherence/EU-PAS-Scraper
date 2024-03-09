@@ -400,15 +400,13 @@ class Command(PandasCommand):
         #     registration_date=df['registration_date'] - 2010)
         return encoded
 
-    def run_logit(self, df, y, var_col_map):
+    def run_logit(self, df, var_formula_map):
         import statsmodels.formula.api as smf
         results = {}
 
         logging.captureWarnings(True)
-        for var, cols in var_col_map.items():
-            escaped_vars = [f'Q("{col}")' for col in cols]
-            formula = f'{y} ~ {" + ".join(escaped_vars)}'
-            self.logger.info(f'Running: {y} ~ {" + ".join(cols)}')
+        for var, formula in var_formula_map.items():
+            self.logger.info(f'Running: {formula}')
             lr_result = smf.logit(formula, df).fit(
                 method='newton',
                 maxiter=1000,
@@ -420,19 +418,31 @@ class Command(PandasCommand):
 
         return results
 
-    def univariate_lr(self, df, y):
+    def build_formula_string(self, y, X):
+        escaped_vars = [f'Q("{x}")' for x in X]
+        return f'{y} ~ {" + ".join(escaped_vars)}'
 
+    def univariate_lr(self, df, y):
         variables = sorted({
             col.split(self.variables_seperator)[0] for col in df.columns
             if self.variables_seperator in col
         })
-        var_col_map = {
-            v: [col for col in df.columns if col.startswith(v)]
+
+        # print(variables, df.filter(like=self.variables_seperator).columns.str.split(
+        #     self.variables_seperator).str[0])
+
+        var_formula_map = {
+            v: self.build_formula_string(
+                y, [col for col in df.columns if col.startswith(v)]
+            )
             for v in variables
         }
-        var_col_map = {var: cols for var, cols in var_col_map.items() if cols}
 
-        return self.run_logit(df, y, var_col_map)
+        var_formula_map.setdefault(
+            'registration_date', f'{y} ~ bs(registration_date, df=3, degree=3, include_intercept=False)'
+        )
+
+        return self.run_logit(df, var_formula_map)
 
     def multivariate_lr(self, df, y):
         high_corr_fiels = [
@@ -445,13 +455,17 @@ class Command(PandasCommand):
         ]
 
         drop_high_corr = [
-            col for col in df.columns if col.split(self.variables_seperator)[0] in high_corr_fiels]
+            col for col in df.columns if col.split(self.variables_seperator)[0] in high_corr_fiels
+        ]
 
-        var_col_map = {
-            'all': df.drop([y, *drop_high_corr], axis='columns').columns
+        var_formula_map = {
+            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, 'registration_date'], axis='columns').columns.values)}"
+            " + bs(registration_date, df=3, degree=3, include_intercept=False)"
+            # " + (cr(registration_date, df=3) - 1)"
+            # " + (cc(registration_date, df=3) - 1)"
         }
 
-        return self.run_logit(df, y, var_col_map)
+        return self.run_logit(df, var_formula_map)
 
     def run(self, args, opts):
         super().run(args, opts)
