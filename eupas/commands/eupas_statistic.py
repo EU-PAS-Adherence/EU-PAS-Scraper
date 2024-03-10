@@ -34,6 +34,8 @@ class Command(PandasCommand):
 
     variables_seperator = '__'
 
+    formula_formatter_regex = re.compile(r'Q\("(.*?)"\)')
+
     def syntax(self):
         return "[options]"
 
@@ -225,7 +227,7 @@ class Command(PandasCommand):
                     multiple_funding_sources)
 
         variables = df.loc[:, [
-            'state', 'risk_management_plan', 'follow_up',
+            'state', 'risk_management_plan', 'follow_up', 'registration_date',
             'requested_by_regulator', 'collaboration_with_research_network',
             'country_type', 'medical_conditions', 'uses_established_data_source',
             'primary_outcomes', 'secondary_outcomes', 'number_of_subjects']]
@@ -256,6 +258,8 @@ class Command(PandasCommand):
         variables = variables.assign(
             updated_state=df['$UPDATED_state'],
             registration_year=df['registration_date'].dt.year,
+            registration_days_since_first=(df['registration_date'] -
+                                           df['registration_date'].min()).apply(lambda x: x.days),
             study_type=df['study_type'].str.split(r'; |: ').str[0],
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
@@ -469,9 +473,11 @@ class Command(PandasCommand):
         import statsmodels.formula.api as smf
         results = {}
 
+        formula_repl = r'\1'
         logging.captureWarnings(True)
         for var, formula in var_formula_map.items():
-            self.logger.info(f'Running: {formula}')
+            self.logger.info(
+                f'Running: {self.formula_formatter_regex.sub(formula_repl, formula)}')
             lr_result = smf.logit(formula, df).fit(
                 method='newton',
                 maxiter=1000,
@@ -500,9 +506,10 @@ class Command(PandasCommand):
             for v in variables
         }
 
-        var_formula_map.setdefault(
-            'registration_year', f'{y} ~ bs(registration_year, df=3, degree=3, include_intercept=False)'
-        )
+        for field in ['registration_year', 'registration_days_since_first']:
+            var_formula_map.setdefault(
+                field, f'{y} ~ bs({field}, df=3, degree=3, include_intercept=False)'
+            )
 
         return self.run_logit(df, var_formula_map)
 
@@ -517,7 +524,8 @@ class Command(PandasCommand):
             # NOTE: High p-values
             # 'planned_duration', 'actual_duration',
             'has_medical_conditions',  # NOTE: High LLR p-value
-            'has_outcomes'  # NOTE: High LLR p-value
+            'has_outcomes',  # NOTE: High LLR p-value
+            'registration_year'
         ]
 
         drop_high_corr = [
@@ -525,8 +533,8 @@ class Command(PandasCommand):
         ]
 
         var_formula_map = {
-            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, 'registration_year'], axis='columns').columns.values)}"
-            " + bs(registration_year, df=3, degree=3, include_intercept=False)"
+            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, *df.filter(like='registration').columns], axis='columns').columns.values)}"
+            " + bs(registration_days_since_first, df=3, degree=3, include_intercept=False)"
         }
 
         return self.run_logit(df, var_formula_map)
@@ -782,14 +790,14 @@ class Command(PandasCommand):
                     model_result.save(
                         self.output_folder / folder_name / 'models' / subfolder_name / f'{file_name}.pickle')
 
-                    conf_odds_ratio = np.exp(model_result.conf_int()) \
+                    ci_odds_ratio = np.exp(model_result.conf_int()) \
                         .rename(columns={0: '[0.025', 1: '0.975]'})
                     odds_ratio = np.exp(model_result.params) \
                         .rename('odds rt').to_frame()
                     odds_ratio_data = np.round(
                         self.pd.merge(
                             odds_ratio,
-                            conf_odds_ratio,
+                            ci_odds_ratio,
                             left_index=True,
                             right_index=True
                         ),

@@ -29,6 +29,8 @@ class Command(PandasCommand):
 
     variables_seperator = '__'
 
+    formula_formatter_regex = re.compile(r'Q\("(.*?)"\)')
+
     def syntax(self):
         return "[options]"
 
@@ -144,7 +146,8 @@ class Command(PandasCommand):
 
         variables = df.loc[:, [
             'study_type', 'state', 'risk_management_plan',
-            'requested_by_regulator', 'number_of_subjects'
+            'requested_by_regulator', 'number_of_subjects',
+            'registration_date'
         ]]
 
         planned_duration = df.loc[
@@ -171,6 +174,8 @@ class Command(PandasCommand):
         variables = variables.assign(
             updated_state=df['$UPDATED_state'],
             registration_year=df['registration_date'].dt.year,
+            registration_days_since_first=(df['registration_date'] -
+                                           df['registration_date'].min()).apply(lambda x: x.days),
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
                 lambda x: 'Single Country' if len(x) == 1 else 'Multiple Countries'),
@@ -191,17 +196,6 @@ class Command(PandasCommand):
                 '1000-10000' if x < 10000 else
                 '>10000'
             ),
-            # NOTE: Number of subjects map with 7 values instead of 5
-            # number_of_subjects_grouped=df['number_of_subjects'].apply(
-            #     lambda x:
-            #     '<100' if x < 100 else
-            #     '100-<500' if x < 500 else
-            #     '500-<1000' if x < 1000 else
-            #     '1000-5000' if x < 5000 else
-            #     '5000-10000' if x < 10000 else
-            #     '10000-50000' if x < 50000 else
-            #     '>50000'
-            # ),
             funding_sources=df['funding_sources'].apply(
                 lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
             multiple_funding_sources=df['funding_sources'].apply(
@@ -395,9 +389,10 @@ class Command(PandasCommand):
         # binaries = self.create_binaries(df)
         # encoded = self.pd.concat([dummies, binaries], axis='columns').assign(
         encoded = dummies.assign(
-            registration_year=df['registration_year'] -
             # NOTE: We will compare against the first year
-            2010
+            registration_year=df['registration_year'] - \
+            df['registration_year'].min(),
+            registration_days_since_first=df['registration_days_since_first']
         )
         return encoded
 
@@ -405,9 +400,11 @@ class Command(PandasCommand):
         import statsmodels.formula.api as smf
         results = {}
 
+        formula_repl = r'\1'
         logging.captureWarnings(True)
         for var, formula in var_formula_map.items():
-            self.logger.info(f'Running: {formula}')
+            self.logger.info(
+                f'Running: {self.formula_formatter_regex.sub(formula_repl, formula)}')
             lr_result = smf.logit(formula, df).fit(
                 method='newton',
                 maxiter=1000,
@@ -436,9 +433,10 @@ class Command(PandasCommand):
             for v in variables
         }
 
-        var_formula_map.setdefault(
-            'registration_year', f'{y} ~ bs(registration_year, df=3, degree=3, include_intercept=False)'
-        )
+        for field in ['registration_year', 'registration_days_since_first']:
+            var_formula_map.setdefault(
+                field, f'{y} ~ bs({field}, df=3, degree=3, include_intercept=False)'
+            )
 
         return self.run_logit(df, var_formula_map)
 
@@ -449,7 +447,8 @@ class Command(PandasCommand):
             # 'updated_state',
             'actual_duration_quartiles',  # NOTE: High VIF (>10)
             'has_medical_conditions',  # NOTE: High LLR p-value (>0.25)
-            'has_outcomes'  # NOTE: High LLR p-value (>0.25)
+            'has_outcomes',  # NOTE: High LLR p-value (>0.25)
+            'registration_year'
         ]
 
         drop_high_corr = [
@@ -457,10 +456,11 @@ class Command(PandasCommand):
         ]
 
         var_formula_map = {
-            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, 'registration_year'], axis='columns').columns.values)}"
-            " + bs(registration_year, df=3, degree=3, include_intercept=False)"
+            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, *df.filter(like='registration').columns], axis='columns').columns.values)}"
+            # " + bs(registration_year, df=3, degree=3, include_intercept=False)"
+            " + bs(registration_days_since_first, df=3, degree=3, include_intercept=False)"
             # " + (cr(registration_year, df=3) - 1)"
-            # " + (cc(registration_year, df=3) - 1)"
+            # " + (cr(registration_days_since_first, df=3) - 1)"
         }
 
         return self.run_logit(df, var_formula_map)
@@ -713,14 +713,14 @@ class Command(PandasCommand):
                     model_result.save(
                         self.output_folder / folder_name / 'models' / subfolder_name / f'{file_name}.pickle')
 
-                    conf_odds_ratio = np.exp(model_result.conf_int()) \
+                    ci_odds_ratio = np.exp(model_result.conf_int()) \
                         .rename(columns={0: '[0.025', 1: '0.975]'})
                     odds_ratio = np.exp(model_result.params) \
                         .rename('odds rt').to_frame()
                     odds_ratio_data = np.round(
                         self.pd.merge(
                             odds_ratio,
-                            conf_odds_ratio,
+                            ci_odds_ratio,
                             left_index=True,
                             right_index=True
                         ),
