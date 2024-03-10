@@ -170,7 +170,7 @@ class Command(PandasCommand):
 
         variables = variables.assign(
             updated_state=df['$UPDATED_state'],
-            registration_date=df['registration_date'].dt.year,
+            registration_year=df['registration_date'].dt.year,
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
                 lambda x: 'Single Country' if len(x) == 1 else 'Multiple Countries'),
@@ -393,11 +393,12 @@ class Command(PandasCommand):
     def encode_variables(self, df, drop_references=True):
         dummies = self.create_dummies(df, drop_references)
         # binaries = self.create_binaries(df)
-        # encoded = self.pd.concat([dummies, binaries], axis='columns') \
-        #     .assign(registration_date=df['registration_date'])
-        encoded = dummies.assign(registration_date=df['registration_date'])
-        # encoded = dummies.assign(
-        #     registration_date=df['registration_date'] - 2010)
+        # encoded = self.pd.concat([dummies, binaries], axis='columns').assign(
+        encoded = dummies.assign(
+            registration_year=df['registration_year'] -
+            # NOTE: We will compare against the first year
+            2010
+        )
         return encoded
 
     def run_logit(self, df, var_formula_map):
@@ -428,9 +429,6 @@ class Command(PandasCommand):
             if self.variables_seperator in col
         })
 
-        # print(variables, df.filter(like=self.variables_seperator).columns.str.split(
-        #     self.variables_seperator).str[0])
-
         var_formula_map = {
             v: self.build_formula_string(
                 y, [col for col in df.columns if col.startswith(v)]
@@ -439,7 +437,7 @@ class Command(PandasCommand):
         }
 
         var_formula_map.setdefault(
-            'registration_date', f'{y} ~ bs(registration_date, df=3, degree=3, include_intercept=False)'
+            'registration_year', f'{y} ~ bs(registration_year, df=3, degree=3, include_intercept=False)'
         )
 
         return self.run_logit(df, var_formula_map)
@@ -459,10 +457,10 @@ class Command(PandasCommand):
         ]
 
         var_formula_map = {
-            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, 'registration_date'], axis='columns').columns.values)}"
-            " + bs(registration_date, df=3, degree=3, include_intercept=False)"
-            # " + (cr(registration_date, df=3) - 1)"
-            # " + (cc(registration_date, df=3) - 1)"
+            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, 'registration_year'], axis='columns').columns.values)}"
+            " + bs(registration_year, df=3, degree=3, include_intercept=False)"
+            # " + (cr(registration_year, df=3) - 1)"
+            # " + (cc(registration_year, df=3) - 1)"
         }
 
         return self.run_logit(df, var_formula_map)
@@ -747,9 +745,9 @@ class Command(PandasCommand):
             # self.logger.info(
             #     'Testing logistic regression assumptions and writing output...')
             # box_tidwell_df = self.pd.DataFrame().assign(
-            #     registration_date=df['registration_date'] -
-            #     df['registration_date'].min() + 1,
-            #     registration_date_log=lambda x: x['registration_date'].apply(
+            #     registration_year=df['registration_year'] -
+            #     df['registration_year'].min() + 1,
+            #     registration_year_log=lambda x: x['registration_year'].apply(
             #         lambda y: y * np.log(y))
             # ).merge(
             #     y,
@@ -760,7 +758,7 @@ class Command(PandasCommand):
 
             # box_tidwell_df.to_excel(f'test_{y_label}.xlsx')
 
-            # box_tidwell_result = smf.logit(f'{y_label} ~ registration_date + registration_date_log', box_tidwell_df).fit(
+            # box_tidwell_result = smf.logit(f'{y_label} ~ registration_year + registration_year_log', box_tidwell_df).fit(
             #     method='newton',
             #     maxiter=1000,
             #     warn_convergence=True,

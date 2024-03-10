@@ -255,7 +255,7 @@ class Command(PandasCommand):
 
         variables = variables.assign(
             updated_state=df['$UPDATED_state'],
-            registration_date=df['registration_date'].dt.year,
+            registration_year=df['registration_date'].dt.year,
             study_type=df['study_type'].str.split(r'; |: ').str[0],
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
@@ -457,9 +457,12 @@ class Command(PandasCommand):
     def encode_variables(self, df, drop_references=True):
         dummies = self.create_dummies(df, drop_references)
         # binaries = self.create_binaries(df)
-        # encoded = self.pd.concat([dummies, binaries], axis='columns') \
-        #     .assign(registration_date=df['registration_date'])
-        encoded = dummies.assign(registration_date=df['registration_date'])
+        # encoded = self.pd.concat([dummies, binaries], axis='columns').assign(
+        encoded = dummies.assign(
+            registration_year=df['registration_year'] -
+            # NOTE: We will compare against the first year
+            2010
+        )
         return encoded
 
     def run_logit(self, df, var_formula_map):
@@ -498,7 +501,7 @@ class Command(PandasCommand):
         }
 
         var_formula_map.setdefault(
-            'registration_date', f'{y} ~ bs(registration_date, df=3, degree=3, include_intercept=False)'
+            'registration_year', f'{y} ~ bs(registration_year, df=3, degree=3, include_intercept=False)'
         )
 
         return self.run_logit(df, var_formula_map)
@@ -522,8 +525,8 @@ class Command(PandasCommand):
         ]
 
         var_formula_map = {
-            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, 'registration_date'], axis='columns').columns.values)}"
-            " + bs(registration_date, df=3, degree=3, include_intercept=False)"
+            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, 'registration_year'], axis='columns').columns.values)}"
+            " + bs(registration_year, df=3, degree=3, include_intercept=False)"
         }
 
         return self.run_logit(df, var_formula_map)
