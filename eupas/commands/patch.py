@@ -46,15 +46,14 @@ class Command(PandasCommand):
     study_cancelled_patterns = [
         # NOTE: Best predictor of cancellation
         r'\bcancel',
-        # NOTE: r'\bdiscontinu' has many false positives; could be reduced by checking the occurence of the words:
-        # study, studies, trial, PAS, PASS, PAES, MAH, market authorisation etc. in the same sentence
-        r'\bdiscontinue(?!\s|s|rs)',
+        # NOTE: r'\bdiscontinue(?!\s|s|rs)' has less false positives
+        r'\bdiscontinu',
         # NOTE: False positives with r'\bterminat' in pregnancy related studies can be reduced by using the regex below
         r'\b(?<!pregnancy )(?<!elective )(?<!medical )(?<!induced )terminat',
         # NOTE: No matches found for halted, etc.
         r'\bhalt',
-        # NOTE: r'\bsuspend' has one false positive, one unclear and one true positive
-        r'\bsuspend(?!\s)',
+        # NOTE: r'\bsuspend(?!\s)' has less false positives
+        r'\bsuspend',
         # NOTE: r'\bwithdr(?:a|e)w' has many false positives and matches withdrawal of meds as well as withdrawal reactions, withdrawal of consent, etc.
         # Cant exclude the word withdrawal because i.e. withdrawal of the MAH, withdrawal of the study
         r'\bwithdr(?:a|e)w(?!\S*\s+(?:reaction|symptom|rate|(?:of|from)\s+(?:\b\S+\b\s+)?(?:consent|treatment|drug|medication)))',
@@ -62,13 +61,27 @@ class Command(PandasCommand):
         r'\brevok',
         # NOTE: The expression r'\babort' for words like abort has practically no relevance for study cancellation and is also used often in
         # pregnancy related studies. It can be improved in a similiar way to the termination term
-        # r'\b(?<!spontaneous )(?<!medical )(?<!induced )(?<!elective termination/)abort',
+        r'\b(?<!spontaneous )(?<!medical )(?<!induced )(?<!elective termination/)abort',
         # NOTE: r'\binterrupt' only matches treatment interruption and the term "interrupted time series". Can be improved:
-        # r'\binterrupt(?!\S*(?:\s+|-)time)',
+        r'\binterrupt(?!\S*(?:\s+|-)time)',
         # NOTE: No matches found for abandoned etc.
         r'\babandon',
-        # NOTE: r'\bstop' will match the word stop with false positives
-        r'\bstop(?!\s)'
+        # NOTE: r'\bstop(?!\s)' has less false positives
+        r'\bstop',
+        # NOTE: No matches found for called off
+        r'\bcalled off',
+        # NOTE: No matches found for ceased, etc.
+        r'\bcease',
+        # NOTE: Many words use the stem end; Only the verb end should be selected
+        r'\bend(?:ed|s|ing)',
+        # NOTE: No matches found for scrapped, etc.
+        r'\bscrapp',
+        # NOTE: No matches found for scrubbed, etc.
+        r'\bscrubb',
+        # NOTE: No matches found for forsaken, etc.
+        r'\bforsak',
+        # NOTE: Only one match
+        r'\bdissolv'
     ]
     updated_state_meta_field_name = '$UPDATED_state'
 
@@ -295,7 +308,8 @@ class Command(PandasCommand):
                 samples = data.loc[
                     ~data[self.study_cancelled_meta_field_name].astype(bool)
                 ].sample(
-                    n=100,
+                    # n=100,
+                    frac=0.05,
                     random_state=123  # NOTE: For reproducibility
                 )
                 self.write_output(samples, '_cancel_samples')

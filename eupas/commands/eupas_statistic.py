@@ -150,10 +150,10 @@ class Command(PandasCommand):
             'Infants and toddlers (28 days - 23 months)': '<18 years',
             'Children (2 - 11 years)': '<18 years',
             'Adolescents (12 - 17 years)': '<18 years',
-            'Adults (18 - 44 years)': '18-64 years',
-            'Adults (45 - 64 years)': '18-64 years',
-            'Adults (65 - 74 years)': '65+ years',
-            'Adults (75 years and over)': '65+ years'
+            'Adults (18 - 44 years)': '18+ years',
+            'Adults (45 - 64 years)': '18+ years',
+            'Adults (65 - 74 years)': '18+ years',
+            'Adults (75 years and over)': '18+ years'
         }
 
         scope_list = [
@@ -385,14 +385,13 @@ class Command(PandasCommand):
             'study_type': 'Observational study',
             'collaboration_with_research_network': False,
             'country_type': 'National study',
-            # NOTE: We will use country_type for multivariate logistic regression
             'number_of_countries_grouped': '3 or more',
             # NOTE: Combined Categories => Many categories: binary encoding?
             # 'funded_by': 'Pharmaceutical companies',
             'multiple_funding_sources': False,
             'medical_conditions': True,
-            # NOTE: Combined Categories => Many categories: binary encoding? or less categories by grouping
-            'age_population': '18-64 years; 65+ years',
+            # NOTE: Combined Categories => Many categories => Less categories by grouping
+            'age_population': '18+ years',
             # NOTE: Combined Categories => But only 3 possible combinations
             'sex_population': 'Male; Female',
             'number_of_subjects_grouped': '100-<500',
@@ -406,6 +405,7 @@ class Command(PandasCommand):
 
         dummy_with_na_drop_map = {
             'planned_duration_quartiles': 1,
+            'actual_duration_quartiles': 1,
             'requested_by_regulator': False,
             'risk_management_plan': 'Not applicable',
             # NOTE: Combined Categories => Many categories: binary encoding?
@@ -515,17 +515,15 @@ class Command(PandasCommand):
 
     def multivariate_lr(self, df, y):
         high_corr_fiels = [
+            'actual_duration_quartiles',  # NOTE: High VIF (>10)
+            'has_medical_conditions',  # NOTE: High LLR p-value (>0.25)
+            'has_outcomes',  # NOTE: High LLR p-value (>0.25)
             # NOTE: We keep country_type instead
             'number_of_countries_grouped',
             # NOTE: This field should be single-valued (finalised) for studies with past final report date
             'state',
             # NOTE: This field can only be true if there are primary outcomes (merge the variables?)
             'secondary_outcomes'
-            # NOTE: High p-values
-            # 'planned_duration', 'actual_duration',
-            'has_medical_conditions',  # NOTE: High LLR p-value
-            'has_outcomes',  # NOTE: High LLR p-value
-            'registration_year'
         ]
 
         drop_high_corr = [
@@ -534,7 +532,8 @@ class Command(PandasCommand):
 
         var_formula_map = {
             'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, *df.filter(like='registration').columns], axis='columns').columns.values)}"
-            " + bs(registration_days_since_first, df=3, degree=3, include_intercept=False)"
+            # " + registration_year + registration_year^2"
+            " + bs(registration_year, df=3, degree=3, include_intercept=False)"
         }
 
         return self.run_logit(df, var_formula_map)
@@ -543,14 +542,11 @@ class Command(PandasCommand):
         super().run(args, opts)
 
         import numpy as np
-        # import matplotlib as mpl
         import matplotlib.pyplot as plt
         import seaborn as sns
-        # import statsmodels.formula.api as smf
         from statsmodels.iolib.table import SimpleTable
         from statsmodels.stats.proportion import proportion_confint
 
-        # mpl.style.use('bmh')
         sns.set_theme(context="paper", style="whitegrid")
 
         self.logger = logging.getLogger()

@@ -113,22 +113,6 @@ class Command(PandasCommand):
     def create_variables(self, df):
         import numpy as np
 
-        # NOTE: Age map with two values instead of three
-        # age_map = {
-        #     'Preterm newborn infants (0 – 27 days)': '<18 years',
-        #     'Term newborn infants (0 – 27 days)': '<18 years',
-        #     'Infants and toddlers (28 days – 23 months)': '<18 years',
-        #     'Children (2 to < 12 years)': '<18 years',
-        #     'Adolescents (12 to < 18 years)': '<18 years',
-        #     'Paediatric Population (< 18 years)': '<18 years',
-        #     'Adults (18 to < 46 years)': '18+ years',
-        #     'Adults (46 to < 65 years)': '18+ years',
-        #     'Adults (65 to < 75 years)': '18+ years',
-        #     'Adults (75 to < 85 years)': '18+ years',
-        #     'Adults (85 years and over)': '18+ years',
-        #     'Elderly (≥ 65 years)': '18+ years'
-        # }
-
         age_map = {
             'Preterm newborn infants (0 – 27 days)': '<18 years',
             'Term newborn infants (0 – 27 days)': '<18 years',
@@ -136,12 +120,21 @@ class Command(PandasCommand):
             'Children (2 to < 12 years)': '<18 years',
             'Adolescents (12 to < 18 years)': '<18 years',
             'Paediatric Population (< 18 years)': '<18 years',
-            'Adults (18 to < 46 years)': '18-64 years',
-            'Adults (46 to < 65 years)': '18-64 years',
-            'Adults (65 to < 75 years)': '65+ years',
-            'Adults (75 to < 85 years)': '65+ years',
-            'Adults (85 years and over)': '65+ years',
-            'Elderly (≥ 65 years)': '65+ years'
+            'Adults (18 to < 46 years)': '18+ years',
+            'Adults (46 to < 65 years)': '18+ years',
+            'Adults (65 to < 75 years)': '18+ years',
+            'Adults (75 to < 85 years)': '18+ years',
+            'Adults (85 years and over)': '18+ years',
+            'Elderly (≥ 65 years)': '18+ years'
+        }
+
+        funding_map = {
+            'EMA': 'Public',
+            'EU institutional research programme': 'Public',
+            'No external funding': self.pd.NA,
+            'Non for-profit organisation (e.g. charity)': 'Public',
+            'Other': 'Other',
+            'Pharmaceutical company and other private sector ': 'Private'
         }
 
         variables = df.loc[:, [
@@ -179,15 +172,6 @@ class Command(PandasCommand):
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
                 lambda x: 'Single Country' if len(x) == 1 else 'Multiple Countries'),
-            # NOTE: Number of subjects map with other categories
-            # number_of_subjects_grouped=df['number_of_subjects'].apply(
-            #     lambda x:
-            #     '<500' if x < 500 else
-            #     '500-<1000' if x < 1000 else
-            #     '1000-<5000' if x < 5000 else
-            #     '5000-<15000' if x < 15000 else
-            #     '>15000'
-            # ),
             number_of_subjects_grouped=df['number_of_subjects'].apply(
                 lambda x:
                 '<100' if x < 100 else
@@ -198,6 +182,15 @@ class Command(PandasCommand):
             ),
             funding_sources=df['funding_sources'].apply(
                 lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
+            funding_sources_grouped=df['funding_sources'].apply(
+                lambda sources:
+                self.pd.NA if not isinstance(sources, list) else
+                self.pd.NA if {'No external funding'}.issuperset(sources) else
+                '; '.join(sorted(list(
+                    {'Public', 'Private'} & set(
+                        funding_map[x] for x in sources)
+                ))) or 'Other'
+            ),
             multiple_funding_sources=df['funding_sources'].apply(
                 lambda x: len(x) if isinstance(x, list) else 0) > 1,
             age_population=df['age_population'].apply(
@@ -206,6 +199,14 @@ class Command(PandasCommand):
                 lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
             study_topic=df['study_topic'].apply(
                 lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
+            study_topic_grouped=df['study_topic'].apply(
+                lambda topics:
+                self.pd.NA if not isinstance(topics, list) else
+                '; '.join(sorted(list(
+                    {'Disease /health condition',
+                        'Human medicinal product'} & set(topics)
+                ))) or 'Other'
+            ),
             non_interventional_scopes=df['non_interventional_scopes'].apply(
                 lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
             non_interventional_study_design=df['non_interventional_study_design'].apply(
@@ -298,17 +299,17 @@ class Command(PandasCommand):
     #     return grouped_agg
 
     def create_dummies(self, df, drop_references=True):
+        import numpy as np
 
         dummy_without_na_drop_map = {
             'updated_state': 'Finalised',
             'study_type': 'Non-interventional study',
             'number_of_countries_grouped': 'Single Country',
+            'funding_sources_grouped': 'Private',
             'multiple_funding_sources': False,
-            # NOTE: Combined Categories => Many categories: binary encoding? or less categories by grouping
-            'age_population': '18-64 years; 65+ years',
-            # 'age_population': '18+ years',
+            # NOTE: Combined Categories => Many categories => Less categories by grouping
+            'age_population': '18+ years',
             'number_of_subjects_grouped': '100-<500',
-            # 'number_of_subjects_grouped': '<500',
             'has_medical_conditions': True,
             'has_outcomes': False,
             'collaboration_with_research_network': False,
@@ -320,6 +321,7 @@ class Command(PandasCommand):
             'actual_duration_quartiles': 1,
             'requested_by_regulator': False,
             'risk_management_plan': 'Not applicable',
+            'study_topic_grouped': str(np.nan),
             # NOTE: Combined Categories => Many categories: binary encoding?; Also one single NA field!
             # 'funding_sources': 'Pharmaceutical company and other private sector ',
             # NOTE: Combined Categories => Many categories: binary encoding?
@@ -442,13 +444,11 @@ class Command(PandasCommand):
 
     def multivariate_lr(self, df, y):
         high_corr_fiels = [
-            # NOTE: This field should is single-valued (finalised) for studies with past final report date
-            #       and is automatically excluded as a reference value
-            # 'updated_state',
             'actual_duration_quartiles',  # NOTE: High VIF (>10)
             'has_medical_conditions',  # NOTE: High LLR p-value (>0.25)
             'has_outcomes',  # NOTE: High LLR p-value (>0.25)
-            'registration_year'
+            # NOTE: High Correlation with updated state, probably filled by ENCEPP team migrating finalized studies
+            'study_topic_grouped'
         ]
 
         drop_high_corr = [
@@ -457,10 +457,9 @@ class Command(PandasCommand):
 
         var_formula_map = {
             'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, *df.filter(like='registration').columns], axis='columns').columns.values)}"
+            " + registration_year + registration_year^2"
             # " + bs(registration_year, df=3, degree=3, include_intercept=False)"
-            " + bs(registration_days_since_first, df=3, degree=3, include_intercept=False)"
             # " + (cr(registration_year, df=3) - 1)"
-            # " + (cr(registration_days_since_first, df=3) - 1)"
         }
 
         return self.run_logit(df, var_formula_map)
@@ -469,14 +468,11 @@ class Command(PandasCommand):
         super().run(args, opts)
 
         import numpy as np
-        # import matplotlib as mpl
         import matplotlib.pyplot as plt
         import seaborn as sns
-        # import statsmodels.formula.api as smf
         from statsmodels.iolib.table import SimpleTable
         from statsmodels.stats.proportion import proportion_confint
 
-        # mpl.style.use('bmh')
         sns.set_theme(context="paper", style="whitegrid")
 
         self.logger = logging.getLogger()
