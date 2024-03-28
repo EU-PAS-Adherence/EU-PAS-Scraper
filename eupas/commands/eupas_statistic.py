@@ -260,6 +260,11 @@ class Command(PandasCommand):
             registration_year=df['registration_date'].dt.year,
             registration_days_since_first=(df['registration_date'] -
                                            df['registration_date'].min()).apply(lambda x: x.days),
+            registration_year_grouped=lambda x: x['registration_year'].apply(
+                lambda y:
+                '2010-2011' if y <= 2011 else
+                str(y)
+            ),
             study_type=df['study_type'].str.split(r'; |: ').str[0],
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
@@ -400,7 +405,8 @@ class Command(PandasCommand):
             # NOTE: Combined Categories => Many categories: binary encoding?
             # 'scopes': 'Risk assessment',
             'primary_outcomes': False,
-            'secondary_outcomes': False
+            'secondary_outcomes': False,
+            'registration_year_grouped': '2010-2011'
         }
 
         dummy_with_na_drop_map = {
@@ -441,32 +447,13 @@ class Command(PandasCommand):
 
         return dummies.rename(columns=self.python_name_converter)
 
-    # def create_binaries(self, df):
-    #     binary_fields = [
-    #         field
-    #         for field in self.category_array_fields
-    #         if field not in ['study_design', 'data_source_types']
-    #     ]
-
-    #     def column_renamer(x, field):
-    #         lowercase = re.sub(r'\s+', '_', x.lower())
-    #         return f'{field}{self.variables_seperator}{lowercase}'
-
-    #     return self.pd.concat([
-    #         df[field].str.get_dummies('; ')
-    #         .rename(columns=lambda x: column_renamer(x, field))
-    #         for field in binary_fields
-    #     ], axis='columns')
-
     def encode_variables(self, df, drop_references=True):
-        dummies = self.create_dummies(df, drop_references)
-        # binaries = self.create_binaries(df)
-        # encoded = self.pd.concat([dummies, binaries], axis='columns').assign(
-        encoded = dummies.assign(
-            registration_year=df['registration_year'] -
-            # NOTE: We will compare against the first year
-            2010
-        )
+        encoded = self.create_dummies(df, drop_references)
+        # encoded = encoded.assign(
+        #     registration_year=df['registration_year'] -
+        #     # NOTE: We will compare against the first year
+        #     2010
+        # )
         return encoded
 
     def run_logit(self, df, var_formula_map):
@@ -506,10 +493,10 @@ class Command(PandasCommand):
             for v in variables
         }
 
-        for field in ['registration_year', 'registration_days_since_first']:
-            var_formula_map.setdefault(
-                field, f'{y} ~ bs({field}, df=3, degree=3, include_intercept=False)'
-            )
+        # for field in ['registration_year', 'registration_days_since_first']:
+        #     var_formula_map.setdefault(
+        #         field, f'{y} ~ bs({field}, df=3, degree=3, include_intercept=False)'
+        #     )
 
         return self.run_logit(df, var_formula_map)
 
@@ -523,7 +510,10 @@ class Command(PandasCommand):
             # NOTE: This field should be single-valued (finalised) for studies with past final report date
             'state',
             # NOTE: This field can only be true if there are primary outcomes (merge the variables?)
-            'secondary_outcomes'
+            'secondary_outcomes',
+            # NOTE: Use dummie variable instead
+            'registration_year',
+            'registration_days_since_first'
         ]
 
         drop_high_corr = [
@@ -531,9 +521,9 @@ class Command(PandasCommand):
         ]
 
         var_formula_map = {
-            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, *df.filter(like='registration').columns], axis='columns').columns.values)}"
+            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr], axis='columns').columns.values)}"
             # " + registration_year + registration_year^2"
-            " + bs(registration_year, df=3, degree=3, include_intercept=False)"
+            # " + bs(registration_year, df=3, degree=3, include_intercept=False)"
         }
 
         return self.run_logit(df, var_formula_map)

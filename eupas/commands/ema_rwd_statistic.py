@@ -167,6 +167,11 @@ class Command(PandasCommand):
         variables = variables.assign(
             updated_state=df['$UPDATED_state'],
             registration_year=df['registration_date'].dt.year,
+            registration_year_grouped=lambda x: x['registration_year'].apply(
+                lambda y:
+                '2010-2011' if y <= 2011 else
+                str(y)
+            ),
             registration_days_since_first=(df['registration_date'] -
                                            df['registration_date'].min()).apply(lambda x: x.days),
             number_of_countries=df['countries'].apply(len),
@@ -313,7 +318,8 @@ class Command(PandasCommand):
             'has_medical_conditions': True,
             'has_outcomes': False,
             'collaboration_with_research_network': False,
-            'uses_established_data_source': False
+            'uses_established_data_source': False,
+            'registration_year_grouped': '2010-2011'
         }
 
         dummy_with_na_drop_map = {
@@ -361,41 +367,14 @@ class Command(PandasCommand):
 
         return dummies.rename(columns=self.python_name_converter)
 
-    # def create_binaries(self, df):
-    #     binary_fields = [
-    #         field
-    #         for field in self.category_array_fields
-    #         if field not in [
-    #             'age_population',
-    #             'data_source_types',
-    #             'funding_sources',
-    #             'non_interventional_scopes',
-    #             'non_interventional_study_design',
-    #             'special_population',
-    #             # 'study_topic'
-    #         ]
-    #     ]
-
-    #     def column_renamer(x, field):
-    #         lowercase = re.sub(r'\s+', '_', x.lower())
-    #         return f'{field}{self.variables_seperator}{lowercase}'
-
-    #     return self.pd.concat([
-    #         df[field].str.get_dummies('; ')
-    #         .rename(columns=lambda x: column_renamer(x, field))
-    #         for field in binary_fields
-    #     ], axis='columns')
-
     def encode_variables(self, df, drop_references=True):
-        dummies = self.create_dummies(df, drop_references)
-        # binaries = self.create_binaries(df)
-        # encoded = self.pd.concat([dummies, binaries], axis='columns').assign(
-        encoded = dummies.assign(
-            # NOTE: We will compare against the first year
-            registration_year=df['registration_year'] - \
-            df['registration_year'].min(),
-            registration_days_since_first=df['registration_days_since_first']
-        )
+        encoded = self.create_dummies(df, drop_references)
+        # encoded = encoded.assign(
+        #     # NOTE: We will compare against the first year
+        #     registration_year=df['registration_year'] - \
+        #     df['registration_year'].min(),
+        #     registration_days_since_first=df['registration_days_since_first']
+        # )
         return encoded
 
     def run_logit(self, df, var_formula_map):
@@ -435,10 +414,10 @@ class Command(PandasCommand):
             for v in variables
         }
 
-        for field in ['registration_year', 'registration_days_since_first']:
-            var_formula_map.setdefault(
-                field, f'{y} ~ bs({field}, df=3, degree=3, include_intercept=False)'
-            )
+        # for field in ['registration_year', 'registration_days_since_first']:
+        #     var_formula_map.setdefault(
+        #         field, f'{y} ~ bs({field}, df=3, degree=3, include_intercept=False)'
+        #     )
 
         return self.run_logit(df, var_formula_map)
 
@@ -448,7 +427,10 @@ class Command(PandasCommand):
             'has_medical_conditions',  # NOTE: High LLR p-value (>0.25)
             'has_outcomes',  # NOTE: High LLR p-value (>0.25)
             # NOTE: High Correlation with updated state, probably filled by ENCEPP team migrating finalized studies
-            'study_topic_grouped'
+            'study_topic_grouped',
+            # NOTE: Use dummie variable instead
+            'registration_year',
+            'registration_days_since_first'
         ]
 
         drop_high_corr = [
@@ -456,10 +438,9 @@ class Command(PandasCommand):
         ]
 
         var_formula_map = {
-            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr, *df.filter(like='registration').columns], axis='columns').columns.values)}"
-            " + registration_year + registration_year^2"
+            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr], axis='columns').columns.values)}"
+            # " + registration_year + registration_year^2"
             # " + bs(registration_year, df=3, degree=3, include_intercept=False)"
-            # " + (cr(registration_year, df=3) - 1)"
         }
 
         return self.run_logit(df, var_formula_map)

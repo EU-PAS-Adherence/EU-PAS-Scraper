@@ -261,7 +261,7 @@ class Command(PandasCommand):
             self.logger.info('Start updating states')
             data[self.study_cancelled_meta_field_name] = data['description'].str \
                 .contains('|'.join(self.study_cancelled_patterns), case=False)
-            data[f'{self.study_cancelled_meta_field_name}_MANUAL'] = data[self.study_cancelled_meta_field_name]
+            # data[f'{self.study_cancelled_meta_field_name}_MANUAL'] = data[self.study_cancelled_meta_field_name]
 
             data = data.assign(**{
                 self.updated_state_meta_field_name:
@@ -306,9 +306,9 @@ class Command(PandasCommand):
                 self.logger.info(
                     'Start generating samples to check sensitivity of cancel fields')
                 samples = data.loc[
+                    # NOTE: astype(bool) fills NA with True
                     ~data[self.study_cancelled_meta_field_name].astype(bool)
                 ].sample(
-                    # n=100,
                     frac=0.05,
                     random_state=123  # NOTE: For reproducibility
                 )
