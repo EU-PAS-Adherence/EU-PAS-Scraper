@@ -11,7 +11,7 @@ from eupas.items import EU_PAS_Study, EMA_RWD_Study
 
 class Command(PandasCommand):
 
-    commands = frozenset(['match', 'state'])
+    commands = frozenset(['match', 'state', 'cancel'])
 
     matched_meta_field_name_prefix = '$MATCHED'
 
@@ -145,8 +145,11 @@ class Command(PandasCommand):
 
         # State Update
         self.update_state_enabled = 'state' in args
-        self.add_cancel_fields_enabled = self.update_state_enabled and opts.add_cancel_fields
-        self.save_cancel_samples_enabled = self.update_state_enabled and opts.save_cancel_samples
+
+        # Regex Cancel
+        self.cancel_enabled = 'cancel' in args
+        self.add_cancel_fields_enabled = self.cancel_enabled and opts.add_cancel_fields
+        self.save_cancel_samples_enabled = self.cancel_enabled and opts.save_cancel_samples
 
     def syntax(self):
         return "patch_name [options]"
@@ -158,7 +161,8 @@ class Command(PandasCommand):
         '''
         Performs different tasks based on arguments:
             match        This will unify the centre or institution columns with the help of a matching spreadsheet\n
-            state        This will find cancelled studies with a list of regex patterns and update the state column based on the dates
+            state        This will create a correct state column based on the dates provided\n
+            cancel       This will find cancelled studies with a list of regex patterns
         '''
         import numpy as np
         super().run(args, opts)
@@ -259,9 +263,6 @@ class Command(PandasCommand):
 
         if self.update_state_enabled:
             self.logger.info('Start updating states')
-            data[self.study_cancelled_meta_field_name] = data['description'].str \
-                .contains('|'.join(self.study_cancelled_patterns), case=False)
-            # data[f'{self.study_cancelled_meta_field_name}_MANUAL'] = data[self.study_cancelled_meta_field_name]
 
             data = data.assign(**{
                 self.updated_state_meta_field_name:
@@ -281,19 +282,29 @@ class Command(PandasCommand):
                     ),
                 f'{self.updated_state_meta_field_name}_eq_state': lambda x: x[self.updated_state_meta_field_name] == x['state']
             })
+
             self.logger.info('Finished updating states')
+
+        if self.cancel_enabled:
+            self.logger.info('Start regex cancel detection')
+
+            data[f'{self.study_cancelled_meta_field_name}_REGEX'] = data['description'].str \
+                .contains('|'.join(self.study_cancelled_patterns), case=False)
+            data[f'{self.study_cancelled_meta_field_name}_MANUAL'] = data[f'{self.study_cancelled_meta_field_name}_REGEX']
+
+            self.logger.info('Finished regex cancel detection')
 
             # TODO: Extract all matches; useful for creating better regex
             if self.add_cancel_fields_enabled:
                 self.logger.info('Start adding detailed cancel fields')
 
                 # NOTE: Only extracts first match
-                data[f'{self.study_cancelled_meta_field_name}_extracted_word'] = data['description'].str \
+                data[f'{self.study_cancelled_meta_field_name}_REGEX_extracted_word'] = data['description'].str \
                     .extract('|'.join([fr'({x}\S*\b)' for x in self.study_cancelled_patterns]), flags=re.IGNORECASE) \
                     .apply(lambda x: '; '.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
 
                 # NOTE: Only extracts first matched sentence
-                data[f'{self.study_cancelled_meta_field_name}_extracted_sentence'] = data['description'].str \
+                data[f'{self.study_cancelled_meta_field_name}_REGEX_extracted_sentence'] = data['description'].str \
                     .extract('|'.join([
                         fr'(\b[^.!?]*{x}\S*\b[^.!?]*(?P<end{i}>[.!?]+)?(?(end{i})|$))'
                         for i, x in enumerate(self.study_cancelled_patterns)
@@ -307,7 +318,8 @@ class Command(PandasCommand):
                     'Start generating samples to check sensitivity of cancel fields')
                 samples = data.loc[
                     # NOTE: astype(bool) fills NA with True
-                    ~data[self.study_cancelled_meta_field_name].astype(bool)
+                    ~data[f'{self.study_cancelled_meta_field_name}_REGEX']
+                    .astype(bool)
                 ].sample(
                     frac=0.05,
                     random_state=123  # NOTE: For reproducibility

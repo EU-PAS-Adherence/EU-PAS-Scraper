@@ -84,11 +84,12 @@ class Command(PandasCommand):
 
         # NOTE: Pandas reads boolean columns with NA Values as float
         # NOTE: We need to fill na first because NA will be True else
-        df['$CANCELLED'] = df['$CANCELLED'].fillna(False).astype(bool)
+        df['$CANCELLED_MANUAL'] = df['$CANCELLED_MANUAL'] \
+            .fillna(False).astype(bool)
         self.logger.info(
-            f'Excluding {df["$CANCELLED"].astype(int).sum()} cancelled studies...'
+            f'Excluding {df["$CANCELLED_MANUAL"].astype(int).sum()} cancelled studies...'
         )
-        df = df.loc[~df['$CANCELLED']]
+        df = df.loc[~df['$CANCELLED_MANUAL']]
 
         self.logger.info('Splitting array string fields into arrays')
         for field in array_fields:
@@ -455,6 +456,7 @@ class Command(PandasCommand):
         from statsmodels.stats.proportion import proportion_confint
 
         sns.set_theme(context="paper", style="whitegrid")
+        (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)
 
         self.logger = logging.getLogger()
         self.logger.info('Starting statistic script')
@@ -754,7 +756,6 @@ class Command(PandasCommand):
             save_model_results(results, 'multivariate_models', name)
 
         self.logger.info('Generating and writing extra plots...')
-        (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)
 
         plt.figure(dpi=300)
         date = data['registration_date'].dt.to_period('M')
