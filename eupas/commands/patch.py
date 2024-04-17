@@ -13,7 +13,7 @@ class Command(PandasCommand):
 
     commands = frozenset(['match', 'state', 'cancel'])
 
-    matched_meta_field_name_prefix = '$MATCHED'
+    matched_meta_field_name = '$MATCHED'
 
     match_map = {
         EU_PAS_Study: [
@@ -22,8 +22,7 @@ class Command(PandasCommand):
             # 'eu_pas_register_number'
         ],
         EMA_RWD_Study: [
-            'lead_institution_encepp',
-            'lead_institution_not_encepp',
+            'funding_details',
             # 'eu_pas_register_number'
         ]
     }
@@ -34,8 +33,7 @@ class Command(PandasCommand):
             'centre_name_of_investigator',
         ],
         EMA_RWD_Study: [
-            'lead_institution_encepp',
-            'lead_institution_not_encepp',
+            'funding_details'
         ]
     }
     match_missing_file_name_prefix = 'missing'
@@ -202,12 +200,21 @@ class Command(PandasCommand):
             )
 
             for field_name in match_fields:
+                merge_data = matching_data[field_name] \
+                    .loc[:, ['manual', 'original']]
+
+                if self.match_type == EMA_RWD_Study and field_name == 'funding_details':
+                    # Join multiple assignments together to ensure m:1 mapping in next step
+                    merge_data = merge_data.groupby('original') \
+                        .agg(lambda x: '; '.join(sorted(set(x)))) \
+                        .reset_index()
+
                 # NOTE: If validation fails: check for duplicate original values in the matching file or values matching the na_values
                 data = self.pd.merge(
                     data,
-                    matching_data[field_name].loc[:, ['manual', 'original']].rename(
+                    merge_data.rename(
                         columns={
-                            'manual': f'{self.matched_meta_field_name_prefix}_{field_name}',
+                            'manual': f'{self.matched_meta_field_name}_{field_name}',
                             'original': field_name
                         }
                     ),
@@ -216,15 +223,12 @@ class Command(PandasCommand):
                     validate='m:1'
                 )
 
-            match_combined_field_name = f'{self.matched_meta_field_name_prefix}_combined_centre_name'
-
-            data[match_combined_field_name] = \
-                data.filter(like=self.matched_meta_field_name_prefix) \
+            data[self.matched_meta_field_name] = data.filter(like=self.matched_meta_field_name) \
                 .apply(lambda x: ''.join([str(y) for y in x.values if isinstance(y, str)]), axis='columns')
 
             data.loc[
-                data[match_combined_field_name] == '',
-                match_combined_field_name
+                data[self.matched_meta_field_name] == '',
+                self.matched_meta_field_name
             ] = self.pd.NA
 
             self.logger.info('Matching finished')
@@ -233,7 +237,7 @@ class Command(PandasCommand):
                 self.logger.info('Start match checking')
 
                 not_matched = data.loc[
-                    data[match_combined_field_name].isna()
+                    data[self.matched_meta_field_name].isna()
                 ]
 
                 if not not_matched.empty:
