@@ -240,7 +240,7 @@ class Command(PandasCommand):
         import numpy as np
 
         dummy_fields = ['updated_state', 'risk_management_plan']
-        dummies = self.pd.get_dummies(df[dummy_fields]) \
+        dummies = self.pd.get_dummies(df[dummy_fields], dummy_na=True) \
             .rename(columns=self.python_name_converter)
 
         grouped = df.assign(

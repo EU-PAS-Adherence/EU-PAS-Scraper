@@ -306,7 +306,7 @@ class Command(PandasCommand):
         import numpy as np
 
         dummy_fields = ['state', 'risk_management_plan']
-        dummies = self.pd.get_dummies(df[dummy_fields]) \
+        dummies = self.pd.get_dummies(df[dummy_fields], dummy_na=True) \
             .rename(columns=self.python_name_converter)
 
         grouped = df.assign(
@@ -724,7 +724,9 @@ class Command(PandasCommand):
             right_index=True
         )
         grouped_agg = self.create_grouped_agg(data_to_group)
-        self.write_output(grouped_agg, '_statistics_centre_all')
+        self.write_output(grouped_agg, '_statistics_funding_all')
+        # self.write_output(grouped_agg.reset_index().rename(
+        #     columns={self.group_by_field_name: 'name'}), '_statistics_funding_all', '.json')
 
         for df, y_label, name in [
                 (variables_past_data_collection, 'has_protocol', 'protocol'),
