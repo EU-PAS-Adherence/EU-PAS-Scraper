@@ -616,7 +616,7 @@ class Command(PandasCommand):
 
                 for col in sorted(df.columns):
 
-                    def calculate_and_write_frequencies(df, col, writer, dropna=True, col_offset=0):
+                    def calculate_and_write_frequencies(df, col, writer, dropna=True, col_offset=0, prefix=''):
 
                         # Absolute and relative frequencies of categories
                         frequencies = self.pd.DataFrame().assign(
@@ -624,7 +624,11 @@ class Command(PandasCommand):
                                 lambda x: x.value_counts(dropna=dropna)),
                             percentage=df.loc[:, [col]].apply(
                                 lambda x: x.value_counts(dropna=dropna, normalize=True) * 100)
-                        ).reset_index()
+                        ).reset_index().rename(
+                            columns={
+                                col: f'{prefix}{col}'
+                            }
+                        )
 
                         frequencies.to_excel(
                             writer,
@@ -637,7 +641,7 @@ class Command(PandasCommand):
                         if col in self.category_array_fields:
 
                             grouped_frequencies = frequencies \
-                                .assign(split=lambda x: x[col].str.split('; ')) \
+                                .assign(split=lambda x: x[f'{prefix}{col}'].str.split('; ')) \
                                 .explode('split') \
                                 .groupby('split')
 
@@ -647,7 +651,7 @@ class Command(PandasCommand):
                                 ),
                                 overall_percentage=grouped_frequencies['percentage'].sum(
                                 ),
-                            ).reset_index().rename(columns={'split': col})
+                            ).reset_index().rename(columns={'split': f'{prefix}{col}'})
 
                             overall_frequencies.to_excel(
                                 writer,
@@ -664,6 +668,26 @@ class Command(PandasCommand):
                         calculate_and_write_frequencies(
                             df, col, writer, dropna=False,
                             col_offset=8 if col in self.category_array_fields else 4
+                        )
+
+                    # Frequencies of categories without NA for the subset of studies required by RMP
+                    calculate_and_write_frequencies(
+                        df[df['risk_management_plan'].isin(self.required_rmp)],
+                        col,
+                        writer,
+                        col_offset=16,
+                        prefix='required_'
+                    )
+                    if df.loc[:, [col]].isna().any().loc[col]:
+                        # Frequencies of categories with NA for the subset of studies required by RMP
+                        calculate_and_write_frequencies(
+                            df[df['risk_management_plan'].isin(
+                                self.required_rmp)],
+                            col,
+                            writer,
+                            dropna=False,
+                            col_offset=24 if col in self.category_array_fields else 20,
+                            prefix='required_'
                         )
 
         self.logger.info('Generating and writing part 2 of analysis...')
