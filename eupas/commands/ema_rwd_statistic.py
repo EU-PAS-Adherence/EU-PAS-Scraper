@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import re
 
@@ -18,10 +18,12 @@ class Command(PandasCommand):
     group_by_field_name = '$MATCHED'
 
     ################################
-    #       COMPARE DATETIME       #
+    #             DATE             #
     ################################
     # NOTE: A datetime is required to determine the studies with past actual dates based on the day of extraction
     compare_datetime = None
+    protocol_tolerance_days = 5
+    results_tolerance_days = 14 + 5
 
     ################################
     #  LISTS USED IN RUN FUNCTION  #
@@ -76,7 +78,9 @@ class Command(PandasCommand):
                     'The date was not formatted correctly like e.g 2020-12-31T15:45'
                 )
         else:
-            self.compare_datetime = np.datetime64(datetime.utcnow(), 'm')
+            self.compare_datetime = np.datetime64(
+                datetime.now(timezone.utc), 'm'
+            )
 
     def preprocess(self, df):
         '''
@@ -300,12 +304,12 @@ class Command(PandasCommand):
         grouped = df.assign(
             past_data_collection=lambda x:
                 x['data_collection_date_actual'].notna()
-                & (x['data_collection_date_actual'] <= self.compare_datetime),
+                & (x['data_collection_date_actual'] <= self.compare_datetime - np.timedelta64(self.protocol_tolerance_days, 'D')),
             past_data_collection_has_protocol=lambda x:
                 x['past_data_collection'] & x['has_protocol'],
             two_weeks_past_final_report=lambda x:
                 x['final_report_date_actual'].notna()
-                & (x['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(14, 'D')),
+                & (x['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(self.results_tolerance_days, 'D')),
             two_weeks_past_final_report_has_result=lambda x:
                 x['two_weeks_past_final_report'] & x['has_result']
         ).merge(dummies, left_index=True, right_index=True)
@@ -576,14 +580,15 @@ class Command(PandasCommand):
         # NOTE: This is the population of studies, which should have protocols available
         variables_past_data_collection = variables[
             variables['data_collection_date_actual'].notna() &
-            (variables['data_collection_date_actual'] <= self.compare_datetime)
+            (variables['data_collection_date_actual'] <=
+             self.compare_datetime - np.timedelta64(self.protocol_tolerance_days, 'D'))
         ]
 
         # NOTE: This is the population of studies, which should have results available
         variables_two_weeks_past_final_report = variables[
             variables['final_report_date_actual'].notna() &
             (variables['final_report_date_actual'] <=
-             self.compare_datetime - np.timedelta64(14, 'D'))
+             self.compare_datetime - np.timedelta64(self.results_tolerance_days, 'D'))
         ]
 
         self.logger.info('Generating and writing part 1 of analysis...')
