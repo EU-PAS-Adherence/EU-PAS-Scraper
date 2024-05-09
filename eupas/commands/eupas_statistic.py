@@ -41,6 +41,27 @@ class Command(PandasCommand):
     required_rmp = ['EU RMP category 1 (imposed as condition of marketing authorisation)',
                     'EU RMP category 2 (specific obligation of marketing authorisation)']
 
+    # Used for frequency tables
+    # NOTE: Arrangement will be mirrored in the final table
+    crosstab_fields = [
+        'age_population',
+        'collaboration_with_research_network',
+        'funding_sources_grouped',
+        'has_medical_conditions',
+        'has_outcomes',
+        'multiple_funding_sources',
+        'number_of_countries_grouped',
+        'number_of_subjects_grouped',
+        'planned_duration_quartiles',
+        'registration_year_grouped',
+        'requested_by_regulator',
+        'study_type',
+        'updated_state',
+        'uses_established_data_source',
+        'has_protocol',
+        'has_result'
+    ]
+
     ################################
     #            OTHER             #
     ################################
@@ -51,7 +72,7 @@ class Command(PandasCommand):
     variables_seperator = '__'
 
     # Regex to unescape variable name in patsy formula string
-    formula_formatter_regex = re.compile(r'Q\("(.*?)"\)')
+    formula_formatter_regex = re.compile(r'Q\("(.*?)"\).*')
 
     def syntax(self):
         return "[options]"
@@ -508,35 +529,36 @@ class Command(PandasCommand):
 
         return encoded.rename(columns=self.python_name_converter)
 
-    def run_logit(self, df, var_formula_map):
+    def run_logit(self, df, logit_map):
         '''
         Runs logistic regression with patsy formulas. Uses a {name: formula} as input and {name: logit_results} as output.
         '''
         import statsmodels.formula.api as smf
         results = {}
 
-        formula_repl = r'\1'
         logging.captureWarnings(True)
-        for var, formula in var_formula_map.items():
+        for name, formula, info in logit_map:
             self.logger.info(
-                f'Running: {self.formula_formatter_regex.sub(formula_repl, formula)}')
+                f'Running: {info}')
             lr_result = smf.logit(formula, df).fit(
                 method='newton',
                 maxiter=1000,
                 warn_convergence=True,
                 disp=False  # NOTE: Set to true/false to enable/disable printing convergence messages
             )
-            results.setdefault(var, lr_result)
+            results.setdefault(name, lr_result)
         logging.captureWarnings(False)
 
         return results
 
-    def build_formula_string(self, y, X):
+    def build_formula_string(self, y, X, escape=True):
         '''
         Builds patsy formula string with escaped values e.g. y ~ Q("x1") + Q("x2").
         '''
-        escaped_vars = [f'Q("{x}")' for x in X]
-        return f'{y} ~ {" + ".join(escaped_vars)}'
+        vars = X
+        if escape:
+            vars = [f'Q("{x}")' for x in X]
+        return f'{y} ~ {" + ".join(vars)}'
 
     def univariate_lr(self, df, y):
         '''
@@ -547,14 +569,20 @@ class Command(PandasCommand):
             if self.variables_seperator in col
         })
 
-        var_formula_map = {
-            v: self.build_formula_string(
-                y, [col for col in df.columns if col.startswith(v)]
+        logit_map = [
+            (
+                var,
+                self.build_formula_string(
+                    y, [col for col in df.columns if col.startswith(var)]
+                ),
+                self.build_formula_string(
+                    y, [var], escape=False
+                )
             )
-            for v in variables
-        }
+            for var in variables
+        ]
 
-        return self.run_logit(df, var_formula_map)
+        return self.run_logit(df, logit_map)
 
     def multivariate_lr(self, df, y):
         '''
@@ -582,11 +610,25 @@ class Command(PandasCommand):
             col for col in df.columns if col.split(self.variables_seperator)[0] in high_corr_fiels
         ]
 
-        var_formula_map = {
-            'all': f"{self.build_formula_string(y, df.drop([y, *drop_high_corr], axis='columns').columns.values)}"
-        }
+        logit_map = [(
+            'all',
+            self.build_formula_string(
+                y,
+                df.drop(
+                    [y, *drop_high_corr], axis='columns'
+                ).columns.values
+            ),
+            self.build_formula_string(
+                y,
+                sorted({
+                    col.split(self.variables_seperator)[0] for col in df.columns
+                    if self.variables_seperator in col and col not in high_corr_fiels
+                }),
+                escape=False
+            )
+        )]
 
-        return self.run_logit(df, var_formula_map)
+        return self.run_logit(df, logit_map)
 
     def run(self, args, opts):
         '''
@@ -676,7 +718,7 @@ class Command(PandasCommand):
 
                 for col in sorted(df.columns):
 
-                    def calculate_and_write_frequencies(df, col, writer, dropna=True, col_offset=0, prefix=''):
+                    def calculate_and_write_frequencies(df, col, writer, dropna=True, col_offset=0):
 
                         # Absolute and relative frequencies of categories
                         frequencies = self.pd.DataFrame().assign(
@@ -686,7 +728,7 @@ class Command(PandasCommand):
                                 lambda x: x.value_counts(dropna=dropna, normalize=True) * 100)
                         ).reset_index().rename(
                             columns={
-                                col: f'{prefix}{col}'
+                                col: col
                             }
                         )
 
@@ -701,7 +743,7 @@ class Command(PandasCommand):
                         if col in self.category_array_fields:
 
                             grouped_frequencies = frequencies \
-                                .assign(split=lambda x: x[f'{prefix}{col}'].str.split('; ')) \
+                                .assign(split=lambda x: x[col].str.split('; ')) \
                                 .explode('split') \
                                 .groupby('split')
 
@@ -711,7 +753,7 @@ class Command(PandasCommand):
                                 ),
                                 overall_percentage=grouped_frequencies['percentage'].sum(
                                 ),
-                            ).reset_index().rename(columns={'split': f'{prefix}{col}'})
+                            ).reset_index().rename(columns={'split': col})
 
                             overall_frequencies.to_excel(
                                 writer,
@@ -728,26 +770,6 @@ class Command(PandasCommand):
                         calculate_and_write_frequencies(
                             df, col, writer, dropna=False,
                             col_offset=8 if col in self.category_array_fields else 4
-                        )
-
-                    # Frequencies of categories without NA for the subset of studies required by RMP
-                    calculate_and_write_frequencies(
-                        df[df['risk_management_plan'].isin(self.required_rmp)],
-                        col,
-                        writer,
-                        col_offset=16,
-                        prefix='required_'
-                    )
-                    if df.loc[:, [col]].isna().any().loc[col]:
-                        # Frequencies of categories with NA for the subset of studies required by RMP
-                        calculate_and_write_frequencies(
-                            df[df['risk_management_plan'].isin(
-                                self.required_rmp)],
-                            col,
-                            writer,
-                            dropna=False,
-                            col_offset=24 if col in self.category_array_fields else 20,
-                            prefix='required_'
                         )
 
         self.logger.info('Generating and writing part 2 of analysis...')
@@ -810,6 +832,7 @@ class Command(PandasCommand):
         grouped_agg = self.create_grouped_agg(data_to_group)
         self.write_output(grouped_agg, '_statistics_funding_all')
 
+        logit_data = []
         for df, y_label, name in [
                 (variables_past_data_collection, 'has_protocol', 'protocol'),
                 (variables_two_weeks_past_final_report, 'has_result', 'results')]:
@@ -858,9 +881,11 @@ class Command(PandasCommand):
                 (self.output_folder / folder_name / 'summaries' /
                  subfolder_name).mkdir(parents=True, exist_ok=True)
 
-                for file_name, model_result in results.items():
+                summaries = {}
+
+                for name, model_result in results.items():
                     model_result.save(
-                        self.output_folder / folder_name / 'models' / subfolder_name / f'{file_name}.pickle')
+                        self.output_folder / folder_name / 'models' / subfolder_name / f'{name}.pickle')
 
                     ci_odds_ratio = np.exp(model_result.conf_int()) \
                         .rename(columns={0: '[0.025', 1: '0.975]'})
@@ -882,24 +907,191 @@ class Command(PandasCommand):
                     summary = model_result.summary()
                     summary.tables[1].extend_right(table)
 
-                    (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.txt') \
+                    summary_df = self.pd.DataFrame(
+                        summary.tables[1].data[1:],
+                        columns=['name'] + summary.tables[1].data[0][1:]
+                    )
+                    summary_df = summary_df.set_index(summary_df.columns[0])
+                    summaries.setdefault(
+                        name,
+                        summary_df
+                    )
+
+                    (self.output_folder / folder_name /
+                     'summaries' / subfolder_name / f'{name}.txt') \
                         .write_text(summary.as_text())
 
-                    (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.html') \
+                    (self.output_folder / folder_name /
+                     'summaries' / subfolder_name / f'{name}.html') \
                         .write_text(summary.as_html())
 
-                    (self.output_folder / folder_name / 'summaries' / subfolder_name / f'{file_name}.csv') \
+                    (self.output_folder / folder_name /
+                     'summaries' / subfolder_name / f'{name}.csv') \
                         .write_text(summary.as_csv())
+
+                return summaries
 
             self.logger.info(
                 'Running univariate logistic regression and writing output...')
             results = self.univariate_lr(encoded_y, y_label)
-            save_model_results(results, 'univariate_models', name)
+            univariate_summaries = save_model_results(
+                results, 'univariate_models', name)
 
             self.logger.info(
                 'Running multivariate logistic regression and writing output...')
             results = self.multivariate_lr(encoded_y, y_label)
-            save_model_results(results, 'multivariate_models', name)
+            multivariate_summaries = save_model_results(
+                results,
+                'multivariate_models',
+                name
+            )
+
+            logit_data.append(
+                dict(univariate_summaries, **multivariate_summaries)
+            )
+
+        self.logger.info('Generating and writing extra tables...')
+        with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_tables_frequencies.xlsx', engine='openpyxl') as writer:
+
+            for df, suffix in [
+                    (variables, '_all'),
+                    (variables_past_data_collection,
+                     '_past_date_collection'),
+                    (variables_two_weeks_past_final_report,
+                     '_two_weeks_past_final_report')]:
+
+                # df.to_excel(
+                #     writer,
+                #     sheet_name=f'variables{suffix}'[
+                #         :self.max_sheet_name_length]
+                # )
+
+                # Create Frequency table of variables for each rmp category
+                rmp = df['risk_management_plan'].fillna('Not specified')
+                result = self.pd.DataFrame()
+
+                for col in self.crosstab_fields:
+
+                    # Absolute Frequencies
+                    absolute = self.pd.crosstab(
+                        df[col].fillna('NA'),
+                        rmp,
+                        rownames=['value'],
+                        margins=True,
+                        margins_name='All',
+                    )
+
+                    # Absolute Frequencies (This will drop the 'All' row automatically)
+                    relative = self.pd.crosstab(
+                        df[col].fillna('NA'),
+                        rmp,
+                        rownames=['value'],
+                        margins=True,
+                        margins_name='All',
+                        normalize='columns'
+                    )
+
+                    combined = absolute[:-1].astype(str) + ' (' + (
+                        relative * 100).round(2).astype(str) + ')'
+
+                    result = self.pd.concat([
+                        result,
+                        combined.assign(variable=col)
+                    ])
+
+                result = result \
+                    .reset_index() \
+                    .set_index(['variable', 'value'])
+
+                result.columns = result.columns.str.replace(
+                    r'\s\(.+\)', '', regex=True) + ' (' + absolute.iloc[-1].astype(str).values + ')'
+
+                result.to_excel(
+                    writer,
+                    sheet_name=f'table{suffix}'[
+                        :self.max_sheet_name_length]
+                )
+
+        with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_tables_logit.xlsx', engine='openpyxl') as writer:
+
+            for df, suffix, logit in zip(
+                (variables_past_data_collection,
+                 variables_two_weeks_past_final_report),
+                ('_past_date_collection',
+                 '_two_weeks_past_final_report'),
+                logit_data
+            ):
+
+                def transform_logit_table(df):
+                    df = df.reset_index()
+
+                    df['name'] = df['name'].str.replace(
+                        self.formula_formatter_regex, r'\1',
+                        regex=True
+                    )
+
+                    df = df.assign(
+                        variable=df['name'].str.split(
+                            self.variables_seperator).str[0],
+                        value=df['name'].str.split(
+                            self.variables_seperator).str[1]
+                    ).set_index(['variable', 'value'])
+
+                    df = self.pd.concat([
+                        df.iloc[:, :5],
+                        df.iloc[:, 7:]
+                    ],
+                        axis='columns'
+                    )
+
+                    df['odds rt'] = df['odds rt'].round(2).astype(str) + ' (' + \
+                        df['[0.025'].round(2).astype(str) + ' - ' + \
+                        df['0.975]'].round(2).astype(str) + ')'
+
+                    df = df.drop(
+                        [
+                            'name', 'coef', 'std err',
+                            'z', '[0.025', '0.975]'
+                        ],
+                        axis='columns'
+                    ).drop('Intercept', level=0)
+
+                    df = df.rename(columns={
+                        'P>|z|': 'P value',
+                        'odds rt': 'OR (95% CI)'
+                    })
+
+                    return df
+
+                # df.to_excel(
+                #     writer,
+                #     sheet_name=f'variables{suffix}'[
+                #         :self.max_sheet_name_length]
+                # )
+
+                multivariate = transform_logit_table(logit['all'])
+
+                univariate = self.pd.DataFrame()
+                for var, df in logit.items():
+                    if var != 'all':
+                        univariate = self.pd.concat([
+                            univariate,
+                            transform_logit_table(df)
+                        ])
+
+                result = self.pd.merge(
+                    univariate,
+                    multivariate,
+                    left_index=True,
+                    right_index=True,
+                    suffixes=(' univariate', ' multivariate')
+                )
+
+                result.to_excel(
+                    writer,
+                    sheet_name=f'table{suffix}'[
+                        :self.max_sheet_name_length]
+                )
 
         self.logger.info('Generating and writing extra plots...')
 
