@@ -31,14 +31,14 @@ class Command(PandasCommand):
     required_rmp = ['EU RMP category 1 (imposed as condition of marketing authorisation)',
                     'EU RMP category 2 (specific obligation of marketing authorisation)']
 
-    # NOTE: These fields are a subset of the analysed variables with multiple values delimited by '; '
+    # NOTE: These fields are a subset of the analysed variables containing multiple values delimited by '; '
     category_array_fields = ['age_population', 'data_source_types', 'funding_sources',
                              'non_interventional_scopes', 'non_interventional_study_design',
                              'special_population', 'study_topic']
 
     # Used for frequency tables
     # NOTE: Arrangement will be mirrored in the final table
-    crosstab_fields = [
+    frequency_fields = [
         'age_population',
         'collaboration_with_research_network',
         'funding_sources_grouped',
@@ -50,6 +50,7 @@ class Command(PandasCommand):
         'planned_duration_quartiles',
         'registration_year_grouped',
         'requested_by_regulator',
+        'study_topic_grouped',
         'study_type',
         'updated_state',
         'uses_established_data_source',
@@ -205,7 +206,7 @@ class Command(PandasCommand):
                 .fillna(0.0).astype(int)
             return np.where(result == 0, self.pd.NA, result)
 
-        # DURATION VARIABLES
+        # DURATION VARIABLE
 
         planned_duration = df.loc[
             df['final_report_date_planed'].notna()
@@ -214,14 +215,6 @@ class Command(PandasCommand):
             .diff(axis='columns').iloc[:, -1]
         # NOTE: There are some studies with negative planned_duration
         planned_duration[planned_duration <= np.timedelta64(0)] = self.pd.NA
-
-        actual_duration = df.loc[
-            df['final_report_date_actual'].notna()
-            & df['data_collection_date_actual'].notna(),
-            ['data_collection_date_actual', 'final_report_date_actual']] \
-            .diff(axis='columns').iloc[:, -1]
-        # NOTE: There are actually no studies with negative actual_duration
-        actual_duration[actual_duration <= np.timedelta64(0)] = self.pd.NA
 
         # COPY UNCHANGED VARIABLES
 
@@ -258,8 +251,8 @@ class Command(PandasCommand):
                 lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
             funding_sources_grouped=df['funding_sources'].apply(
                 lambda sources:
-                self.pd.NA if not isinstance(sources, list) else
-                self.pd.NA if {'No external funding'}.issuperset(sources) else
+                'Other' if not isinstance(sources, list) else
+                'Other' if {'No external funding'}.issuperset(sources) else
                 '; '.join(sorted(list(
                     {'Public', 'Private'} & set(
                         funding_map[x] for x in sources)
@@ -290,9 +283,6 @@ class Command(PandasCommand):
             planned_duration=planned_duration,
             planned_duration_quartiles=lambda x: get_quartiles(
                 x['planned_duration']),
-            actual_duration=actual_duration,
-            actual_duration_quartiles=lambda x: get_quartiles(
-                x['actual_duration']),
             uses_established_data_source=df[['data_sources_registered_with_encepp',
                                              'data_sources_not_registered_with_encepp']].notna().any(axis='columns'),
             collaboration_with_research_network=df[['networks_encepp',
@@ -419,7 +409,6 @@ class Command(PandasCommand):
             'number_of_countries_grouped': 'Single Country',
             'funding_sources_grouped': 'Private',
             'multiple_funding_sources': False,
-            # NOTE: Combined Categories => Many categories => Less categories by grouping
             'age_population': '18+ years',
             'number_of_subjects_grouped': '100-<500',
             'has_medical_conditions': True,
@@ -431,7 +420,6 @@ class Command(PandasCommand):
 
         dummy_with_na_drop_map = {
             'planned_duration_quartiles': 1,
-            'actual_duration_quartiles': 1,
             'requested_by_regulator': False,
             'risk_management_plan': 'Not applicable',
             'study_topic_grouped': str(np.nan),
@@ -540,35 +528,25 @@ class Command(PandasCommand):
 
         # DEFINE VARIABLES TO REMOVE LIKE FOR EXAMPLE MULTICOLLINEAR VARIABLES
 
-        high_corr_fiels = [
-            'actual_duration_quartiles',  # NOTE: High VIF (>10)
-            'has_medical_conditions',  # NOTE: High LLR p-value (>0.25)
-            'has_outcomes',  # NOTE: High LLR p-value (>0.25)
+        drop_fields = [
+            # 'has_medical_conditions',  # NOTE: High LLR p-value (>0.25)
+            # 'has_outcomes',  # NOTE: High LLR p-value (>0.25)
             # NOTE: High Correlation with updated state, probably filled by ENCEPP team migrating finalized studies
-            'study_topic_grouped',
-            # NOTE: Use dummie variable instead
-            'registration_year',
-            'registration_days_since_first'
+            'study_topic_grouped'
         ]
 
-        drop_high_corr = [
-            col for col in df.columns if col.split(self.variables_seperator)[0] in high_corr_fiels
-        ]
+        variables = df.columns[~df.columns.str.split(self.variables_seperator).str[
+            0].isin([y, *drop_fields])].sort_values()
 
         logit_map = [(
             'all',
             self.build_formula_string(
                 y,
-                df.drop(
-                    [y, *drop_high_corr], axis='columns'
-                ).columns.values
+                variables
             ),
             self.build_formula_string(
                 y,
-                sorted({
-                    col.split(self.variables_seperator)[0] for col in df.columns
-                    if self.variables_seperator in col and col not in high_corr_fiels
-                }),
+                variables.str.split(self.variables_seperator).str[0].unique(),
                 escape=False
             )
         )]
@@ -894,7 +872,10 @@ class Command(PandasCommand):
                 'Running univariate logistic regression and writing output...')
             results = self.univariate_lr(encoded_y, y_label)
             univariate_summaries = save_model_results(
-                results, 'univariate_models', name)
+                results,
+                'univariate_models',
+                name
+            )
 
             self.logger.info(
                 'Running multivariate logistic regression and writing output...')
@@ -929,11 +910,11 @@ class Command(PandasCommand):
                 rmp = df['risk_management_plan'].fillna('Not specified')
                 result = self.pd.DataFrame()
 
-                for col in self.crosstab_fields:
+                for col in self.frequency_fields:
 
                     # Absolute Frequencies
                     absolute = self.pd.crosstab(
-                        df[col].fillna('NA'),
+                        df[col].fillna(str(np.nan)),
                         rmp,
                         rownames=['value'],
                         margins=True,
@@ -942,7 +923,7 @@ class Command(PandasCommand):
 
                     # Absolute Frequencies (This will drop the 'All' row automatically)
                     relative = self.pd.crosstab(
-                        df[col].fillna('NA'),
+                        df[col].fillna(str(np.nan)),
                         rmp,
                         rownames=['value'],
                         margins=True,
@@ -982,7 +963,7 @@ class Command(PandasCommand):
             ):
 
                 def transform_logit_table(df):
-                    df = df.reset_index()
+                    df = df.drop('Intercept').reset_index()
 
                     df['name'] = df['name'].str.replace(
                         self.formula_formatter_regex, r'\1',
@@ -994,7 +975,7 @@ class Command(PandasCommand):
                             self.variables_seperator).str[0],
                         value=df['name'].str.split(
                             self.variables_seperator).str[1]
-                    ).set_index(['variable', 'value'])
+                    )
 
                     df = self.pd.concat([
                         df.iloc[:, :5],
@@ -1009,11 +990,11 @@ class Command(PandasCommand):
 
                     df = df.drop(
                         [
-                            'name', 'coef', 'std err',
+                            'coef', 'std err',
                             'z', '[0.025', '0.975]'
                         ],
                         axis='columns'
-                    ).drop('Intercept', level=0)
+                    )
 
                     df = df.rename(columns={
                         'P>|z|': 'P value',
@@ -1031,20 +1012,64 @@ class Command(PandasCommand):
                 multivariate = transform_logit_table(logit['all'])
 
                 univariate = self.pd.DataFrame()
-                for var, df in logit.items():
+                frequencies = self.pd.DataFrame()
+                for var, logit_df in logit.items():
                     if var != 'all':
+
                         univariate = self.pd.concat([
                             univariate,
-                            transform_logit_table(df)
+                            transform_logit_table(logit_df)
                         ])
+
+                        frequencies = self.pd.concat([
+                            frequencies,
+                            self.pd.merge(
+                                df[var].fillna(str(np.nan))
+                                .value_counts()
+                                .rename('absolute').to_frame(),
+                                df[var].fillna(str(np.nan))
+                                .value_counts(normalize=True)
+                                .rename('relative').to_frame(),
+                                left_index=True,
+                                right_index=True,
+                            ).assign(variable=var)
+                            .reset_index()
+                            .rename(
+                                columns={
+                                    var: 'value'
+                                }
+                            )
+                        ])
+
+                frequencies = frequencies.assign(
+                    **{
+                        'n (%)': lambda x: x['absolute'].astype(str) + ' ('
+                        + (x['relative'] * 100).round(2).astype(str) + ')'
+                    },
+                    name=lambda x: x['variable'].astype(str) + '__'
+                    + x['value'].astype(str).map(self.python_name_converter)
+                ).drop(['absolute', 'relative'], axis='columns')
 
                 result = self.pd.merge(
                     univariate,
                     multivariate,
-                    left_index=True,
-                    right_index=True,
+                    on='name',
+                    how='left',
                     suffixes=(' univariate', ' multivariate')
                 )
+
+                print(result.name.values, frequencies.name.values)
+
+                result = self.pd.merge(
+                    frequencies,
+                    result,
+                    on='name',
+                    how='left'
+                ).drop(
+                    ['name', 'variable univariate', 'value univariate',
+                     'variable multivariate', 'value multivariate'],
+                    axis='columns'
+                ).set_index(['variable', 'value']).sort_index()
 
                 result.to_excel(
                     writer,
