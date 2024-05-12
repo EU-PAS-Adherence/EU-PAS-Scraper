@@ -595,7 +595,6 @@ class Command(PandasCommand):
 
         self.logger.info('Writing some preanalysis data...')
         self.write_output(data, '_statistics_preprocessed')
-        self.write_output(variables, '_statistics_variables')
 
         # NOTE: This is the population of studies, which should have protocols available
         variables_past_data_collection = variables[
@@ -610,6 +609,20 @@ class Command(PandasCommand):
             (variables['final_report_date_actual'] <=
              self.compare_datetime - np.timedelta64(self.results_tolerance_days, 'D'))
         ]
+
+        with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables.xlsx', engine='openpyxl') as writer:
+
+            for df, sheet_name in [
+                    (variables, 'all'),
+                    (variables_past_data_collection,
+                     'past_date_collection'),
+                    (variables_two_weeks_past_final_report,
+                     'two_weeks_past_final_report')]:
+
+                df.to_excel(
+                    writer,
+                    sheet_name=sheet_name
+                )
 
         self.logger.info('Generating and writing part 1 of analysis...')
         for df, suffix in [
@@ -1057,8 +1070,6 @@ class Command(PandasCommand):
                     how='left',
                     suffixes=(' univariate', ' multivariate')
                 )
-
-                print(result.name.values, frequencies.name.values)
 
                 result = self.pd.merge(
                     frequencies,
