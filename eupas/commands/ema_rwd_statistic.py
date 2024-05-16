@@ -22,8 +22,12 @@ class Command(PandasCommand):
     ################################
     # NOTE: A datetime is required to determine the studies with past actual dates based on the day of extraction
     compare_datetime = None
-    protocol_tolerance_days = 5
-    results_tolerance_days = 14 + 5
+    protocol_tolerance_busdays = 5
+    results_tolerance_busdays = 10 + 5
+    # NOTE: Encepp migrated from EUPAS go EMA RWD and has reported a downtime between 2024-01-22 and 2024-02-15
+    # NOTE: There are studies with update_dates 2024-01-22 and 2024-02-15
+    downtime_start = '2024-01-23'
+    downtime_end = '2024-02-14'
 
     ################################
     #  LISTS USED IN RUN FUNCTION  #
@@ -221,7 +225,10 @@ class Command(PandasCommand):
         variables = df.loc[:, [
             'study_type', 'state', 'risk_management_plan',
             'requested_by_regulator', 'number_of_subjects',
-            'registration_date'
+            'registration_date',
+            # HELPER VARIABLES
+            'data_collection_date_actual', 'final_report_date_actual',
+            'has_protocol', 'has_result'
         ]]
 
         # ASSIGN OTHER VARIABLES
@@ -231,11 +238,10 @@ class Command(PandasCommand):
             registration_year=df['registration_date'].dt.year,
             registration_year_grouped=lambda x: x['registration_year'].apply(
                 lambda y:
-                '2010-2011' if y <= 2011 else
+                '2010-2013' if y <= 2013 else
+                '2023-2024' if y >= 2023 else
                 str(y)
             ),
-            registration_days_since_first=(df['registration_date'] -
-                                           df['registration_date'].min()).apply(lambda x: x.days),
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
                 lambda x: 'Single Country' if len(x) == 1 else 'Multiple Countries'),
@@ -248,7 +254,8 @@ class Command(PandasCommand):
                 '>10000'
             ),
             funding_sources=df['funding_sources'].apply(
-                lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
+                lambda x: list(sorted(x)) if isinstance(x, list) else x
+            ).str.join('; '),
             funding_sources_grouped=df['funding_sources'].apply(
                 lambda sources:
                 'Other' if not isinstance(sources, list) else
@@ -259,13 +266,19 @@ class Command(PandasCommand):
                 ))) or 'Other'
             ),
             multiple_funding_sources=df['funding_sources'].apply(
-                lambda x: len(x) if isinstance(x, list) else 0) > 1,
+                lambda x: len(x) if isinstance(x, list) else 0
+            ) > 1,
             age_population=df['age_population'].apply(
-                lambda ages: '; '.join(sorted(list({age_map[x] for x in ages})))),
+                lambda ages: '; '.join(
+                    sorted(list({age_map[x] for x in ages}))
+                )
+            ),
             special_population=df['special_population'].apply(
-                lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
+                lambda x: list(sorted(x)) if isinstance(x, list) else x
+            ).str.join('; '),
             study_topic=df['study_topic'].apply(
-                lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
+                lambda x: list(sorted(x)) if isinstance(x, list) else x
+            ).str.join('; '),
             study_topic_grouped=df['study_topic'].apply(
                 lambda topics:
                 self.pd.NA if not isinstance(topics, list) else
@@ -275,21 +288,47 @@ class Command(PandasCommand):
                 ))) or 'Other'
             ),
             non_interventional_scopes=df['non_interventional_scopes'].apply(
-                lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
+                lambda x: list(sorted(x)) if isinstance(x, list) else x
+            ).str.join('; '),
             non_interventional_study_design=df['non_interventional_study_design'].apply(
-                lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; '),
+                lambda x: list(sorted(x)) if isinstance(x, list) else x
+            ).str.join('; '),
             has_medical_conditions=df['medical_conditions'].notna(),
             has_outcomes=df['outcomes'].notna(),
             planned_duration=planned_duration,
             planned_duration_quartiles=lambda x: get_quartiles(
-                x['planned_duration']),
-            uses_established_data_source=df[['data_sources_registered_with_encepp',
-                                             'data_sources_not_registered_with_encepp']].notna().any(axis='columns'),
-            collaboration_with_research_network=df[['networks_encepp',
-                                                    'networks_not_encepp']].notna().any(axis='columns'),
+                x['planned_duration']
+            ),
+            uses_established_data_source=df[[
+                'data_sources_registered_with_encepp',
+                'data_sources_not_registered_with_encepp'
+            ]].notna().any(axis='columns'),
+            collaboration_with_research_network=df[
+                ['networks_encepp', 'networks_not_encepp']
+            ].notna().any(axis='columns'),
             # NOTE: Only scraped has data_source_types
             # data_source_types=df['data_source_types'].apply(
             #     lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; ')
+
+            # HELPER VARIABLES
+            data_collection_days_difference=np.datetime64(self.compare_datetime, 'D') -
+            df['data_collection_date_actual'],
+            data_collection_busdays_difference=np.busday_count(
+                df['data_collection_date_actual']
+                .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
+                np.datetime64(self.compare_datetime, 'D'),
+                holidays=self.downtime
+            ),
+            due_protocol=lambda x: x['data_collection_busdays_difference'] > self.protocol_tolerance_busdays,
+            final_report_days_difference=np.datetime64(self.compare_datetime, 'D') -
+            df['final_report_date_actual'],
+            final_report_busdays_difference=np.busday_count(
+                df['final_report_date_actual']
+                .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
+                np.datetime64(self.compare_datetime, 'D'),
+                holidays=self.downtime
+            ),
+            due_result=lambda x: x['final_report_busdays_difference'] > self.results_tolerance_busdays,
         )
 
         return variables.sort_index(axis='columns')
@@ -300,7 +339,6 @@ class Command(PandasCommand):
 
         Uses categorical Variables in Dataframe as input.
         '''
-        import numpy as np
         # NOTE: Can't access DataFrameGroupBy.groups with NA Value
         temp_na_name = '$NA'
 
@@ -313,16 +351,10 @@ class Command(PandasCommand):
         # ASSIGN VARIABLES FOR STATISTICS OF REPORTED DOCUMENTS
 
         grouped = df.assign(
-            past_data_collection=lambda x:
-                x['data_collection_date_actual'].notna()
-                & (x['data_collection_date_actual'] <= self.compare_datetime - np.timedelta64(self.protocol_tolerance_days, 'D')),
-            past_data_collection_has_protocol=lambda x:
-                x['past_data_collection'] & x['has_protocol'],
-            two_weeks_past_final_report=lambda x:
-                x['final_report_date_actual'].notna()
-                & (x['final_report_date_actual'] <= self.compare_datetime - np.timedelta64(self.results_tolerance_days, 'D')),
-            two_weeks_past_final_report_has_result=lambda x:
-                x['two_weeks_past_final_report'] & x['has_result']
+            due_protocol_has_protocol=lambda x:
+                x['due_protocol'] & x['has_protocol'],
+            due_result_has_result=lambda x:
+                x['due_result'] & x['has_result']
         ).merge(dummies, left_index=True, right_index=True)
 
         # GROUPBY SPONSORS AFTER EXPLODING THE STUDIES WITH MULTIPLE SPONSORS
@@ -365,14 +397,14 @@ class Command(PandasCommand):
             **dummie_agg,
             number_of_studies_with_result=('has_result', bool_sum),
             number_of_studies_with_protocol=('has_protocol', bool_sum),
-            number_of_studies_with_past_data_collection=(
-                'past_data_collection', bool_sum),
-            number_of_studies_with_past_data_collection_and_protocols=(
-                'past_data_collection_has_protocol', bool_sum),
-            number_of_studies_with_two_weeks_past_final_report=(
-                'two_weeks_past_final_report', bool_sum),
-            number_of_studies_with_two_weeks_past_final_report_and_results=(
-                'two_weeks_past_final_report_has_result', bool_sum)
+            number_of_studies_with_due_protocol=('due_protocol', bool_sum),
+            number_of_studies_with_due_protocol_has_protocol=(
+                'due_protocol_has_protocol', bool_sum
+            ),
+            number_of_studies_with_due_result=('due_result', bool_sum),
+            number_of_studies_with_due_result_has_result=(
+                'due_result_has_result', bool_sum
+            )
         )
 
         sizes = grouped.size().rename('num_studies')
@@ -415,7 +447,7 @@ class Command(PandasCommand):
             'has_outcomes': False,
             'collaboration_with_research_network': False,
             'uses_established_data_source': False,
-            'registration_year_grouped': '2010-2011'
+            'registration_year_grouped': '2010-2013'
         }
 
         dummy_with_na_drop_map = {
@@ -535,8 +567,11 @@ class Command(PandasCommand):
             'study_topic_grouped'
         ]
 
-        variables = df.columns[~df.columns.str.split(self.variables_seperator).str[
-            0].isin([y, *drop_fields])].sort_values()
+        variables = df.columns[
+            ~df.columns.str.split(self.variables_seperator).str[0].isin(
+                [y, *drop_fields]
+            )
+        ].sort_values()
 
         logit_map = [(
             'all',
@@ -570,6 +605,10 @@ class Command(PandasCommand):
         sns.set_theme(context="paper", style="whitegrid")
         (self.output_folder / 'plots/').mkdir(parents=True, exist_ok=True)
 
+        self.downtime = np.arange(
+            self.downtime_start, self.downtime_end, dtype='datetime64[D]'
+        )
+
         self.logger = logging.getLogger()
         self.logger.info('Starting statistic script')
         self.logger.info(f'Pandas {self.pd.__version__}')
@@ -584,40 +623,23 @@ class Command(PandasCommand):
 
         self.logger.info('Generating categories...')
         variables = self.create_variables(data)
-        variables = variables.merge(
-            data.loc[:, [
-                'data_collection_date_actual', 'final_report_date_actual',
-                'has_protocol', 'has_result'
-            ]],
-            left_index=True,
-            right_index=True
-        )
 
         self.logger.info('Writing some preanalysis data...')
         self.write_output(data, '_statistics_preprocessed')
 
         # NOTE: This is the population of studies, which should have protocols available
-        variables_past_data_collection = variables[
-            variables['data_collection_date_actual'].notna() &
-            (variables['data_collection_date_actual'] <=
-             self.compare_datetime - np.timedelta64(self.protocol_tolerance_days, 'D'))
-        ]
+        variables_due_protocol = variables[variables['due_protocol']]
 
         # NOTE: This is the population of studies, which should have results available
-        variables_two_weeks_past_final_report = variables[
-            variables['final_report_date_actual'].notna() &
-            (variables['final_report_date_actual'] <=
-             self.compare_datetime - np.timedelta64(self.results_tolerance_days, 'D'))
-        ]
+        variables_due_result = variables[variables['due_result']]
 
         with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables.xlsx', engine='openpyxl') as writer:
 
             for df, sheet_name in [
-                    (variables, 'all'),
-                    (variables_past_data_collection,
-                     'past_date_collection'),
-                    (variables_two_weeks_past_final_report,
-                     'two_weeks_past_final_report')]:
+                (variables, 'all'),
+                (variables_due_protocol, 'due_protocol'),
+                (variables_due_result, 'due_result')
+            ]:
 
                 df.to_excel(
                     writer,
@@ -626,11 +648,10 @@ class Command(PandasCommand):
 
         self.logger.info('Generating and writing part 1 of analysis...')
         for df, suffix in [
-                (variables, '_all'),
-                (variables_past_data_collection,
-                 '_past_date_collection'),
-                (variables_two_weeks_past_final_report,
-                 '_two_weeks_past_final_report')]:
+            (variables, '_all'),
+            (variables_due_protocol, '_due_protocol'),
+            (variables_due_result, '_due_result')
+        ]:
 
             with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables_frequencies{suffix}.xlsx', engine='openpyxl') as writer:
 
@@ -706,11 +727,10 @@ class Command(PandasCommand):
 
         self.logger.info('Generating and writing part 2 of analysis...')
         for df, suffix in [
-                (variables, '_all'),
-                (variables_past_data_collection,
-                 '_past_date_collection'),
-                (variables_two_weeks_past_final_report,
-                 '_two_weeks_past_final_report')]:
+            (variables, '_all'),
+            (variables_due_protocol, '_due_protocol'),
+            (variables_due_result, '_due_result')
+        ]:
 
             with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables_documents{suffix}.xlsx', engine='openpyxl') as writer:
 
@@ -784,8 +804,9 @@ class Command(PandasCommand):
 
         logit_data = []
         for df, y_label, name in [
-                (variables_past_data_collection, 'has_protocol', 'protocol'),
-                (variables_two_weeks_past_final_report, 'has_result', 'results')]:
+            (variables_due_protocol, 'has_protocol', 'protocol'),
+            (variables_due_result, 'has_result', 'results')
+        ]:
 
             self.logger.info(
                 f'Starting logistic regression for {y_label}...')
@@ -907,11 +928,10 @@ class Command(PandasCommand):
         with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_tables_frequencies.xlsx', engine='openpyxl') as writer:
 
             for df, suffix in [
-                    (variables, '_all'),
-                    (variables_past_data_collection,
-                     '_past_date_collection'),
-                    (variables_two_weeks_past_final_report,
-                     '_two_weeks_past_final_report')]:
+                (variables, '_all'),
+                (variables_due_protocol, '_due_protocol'),
+                (variables_due_result, '_due_result')
+            ]:
 
                 # df.to_excel(
                 #     writer,
@@ -927,7 +947,7 @@ class Command(PandasCommand):
 
                     # Absolute Frequencies
                     absolute = self.pd.crosstab(
-                        df[col].fillna(str(np.nan)),
+                        df[col].fillna('Not available'),
                         rmp,
                         rownames=['value'],
                         margins=True,
@@ -936,7 +956,7 @@ class Command(PandasCommand):
 
                     # Absolute Frequencies (This will drop the 'All' row automatically)
                     relative = self.pd.crosstab(
-                        df[col].fillna(str(np.nan)),
+                        df[col].fillna('Not available'),
                         rmp,
                         rownames=['value'],
                         margins=True,
@@ -946,6 +966,10 @@ class Command(PandasCommand):
 
                     combined = absolute[:-1].astype(str) + ' (' + (
                         relative * 100).round(2).astype(str) + ')'
+
+                    # NOTE: Quickfix to prevent dtype changes for planned_duration_quartiles
+                    # NOTE: This will also change the bool value names
+                    combined.index = combined.index.astype(str)
 
                     result = self.pd.concat([
                         result,
@@ -968,10 +992,8 @@ class Command(PandasCommand):
         with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_tables_logit.xlsx', engine='openpyxl') as writer:
 
             for df, suffix, logit in zip(
-                (variables_past_data_collection,
-                 variables_two_weeks_past_final_report),
-                ('_past_date_collection',
-                 '_two_weeks_past_final_report'),
+                (variables_due_protocol, variables_due_result),
+                ('_due_protocol', '_due_result'),
                 logit_data
             ):
 
@@ -1034,6 +1056,8 @@ class Command(PandasCommand):
                             transform_logit_table(logit_df)
                         ])
 
+                        # NOTE: The NA Values have to be filled with 'nan' to merge values correctly
+                        # We will rename this later
                         frequencies = self.pd.concat([
                             frequencies,
                             self.pd.merge(
@@ -1080,7 +1104,19 @@ class Command(PandasCommand):
                     ['name', 'variable univariate', 'value univariate',
                      'variable multivariate', 'value multivariate'],
                     axis='columns'
-                ).set_index(['variable', 'value']).sort_index()
+                )
+
+                # NOTE: Quickfix to prevent dtype changes for planned_duration_quartiles
+                # NOTE: This will also change the bool value names
+                result['value'] = result['value'].astype(str).map(
+                    lambda x: 'Not available' if x == 'nan' else x
+                )
+
+                result = result.set_index(['variable', 'value']).sort_index()
+
+                # NOTE: Reorder columns so that p value come at the end
+                result = result[[*result.columns[::2].values,
+                                 *result.columns[1::2].values]]
 
                 result.to_excel(
                     writer,

@@ -1,3 +1,5 @@
+# DEPRECATED (LAST UPDATE COMMIT 0c87508c at May 12, 2024 at 10:33:54 PM GMT+2)
+
 from datetime import datetime, timezone
 import logging
 import re
