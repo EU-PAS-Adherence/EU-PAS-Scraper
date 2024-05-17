@@ -46,7 +46,7 @@ class Command(PandasCommand):
         'age_population',
         'collaboration_with_research_network',
         'funding_sources_grouped',
-        'has_medical_conditions',
+        'studied_medical_conditions',
         'has_outcomes',
         'multiple_funding_sources',
         'number_of_countries_grouped',
@@ -293,7 +293,7 @@ class Command(PandasCommand):
             non_interventional_study_design=df['non_interventional_study_design'].apply(
                 lambda x: list(sorted(x)) if isinstance(x, list) else x
             ).str.join('; '),
-            has_medical_conditions=df['medical_conditions'].notna(),
+            studied_medical_conditions=df['medical_conditions'].notna(),
             has_outcomes=df['outcomes'].notna(),
             planned_duration=planned_duration,
             planned_duration_quartiles=lambda x: get_quartiles(
@@ -443,7 +443,7 @@ class Command(PandasCommand):
             'multiple_funding_sources': False,
             'age_population': '18+ years',
             'number_of_subjects_grouped': '100-<500',
-            'has_medical_conditions': True,
+            'studied_medical_conditions': True,
             'has_outcomes': False,
             'collaboration_with_research_network': False,
             'uses_established_data_source': False,
@@ -561,7 +561,7 @@ class Command(PandasCommand):
         # DEFINE VARIABLES TO REMOVE LIKE FOR EXAMPLE MULTICOLLINEAR VARIABLES
 
         drop_fields = [
-            # 'has_medical_conditions',  # NOTE: High LLR p-value (>0.25)
+            # 'studied_medical_conditions',  # NOTE: High LLR p-value (>0.25)
             # 'has_outcomes',  # NOTE: High LLR p-value (>0.25)
             # NOTE: High Correlation with updated state, probably filled by ENCEPP team migrating finalized studies
             'study_topic_grouped'
@@ -980,8 +980,13 @@ class Command(PandasCommand):
                     .reset_index() \
                     .set_index(['variable', 'value'])
 
+                # Cleanup column names and sort them
                 result.columns = result.columns.str.replace(
                     r'\s\(.+\)', '', regex=True) + ' (' + absolute.iloc[-1].astype(str).values + ')'
+
+                result = result[[
+                    *result.columns[-1:].values, *result.columns[:-1].values
+                ]]
 
                 result.to_excel(
                     writer,
@@ -991,8 +996,9 @@ class Command(PandasCommand):
 
         with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_tables_logit.xlsx', engine='openpyxl') as writer:
 
-            for df, suffix, logit in zip(
+            for df, y_label, suffix, logit in zip(
                 (variables_due_protocol, variables_due_result),
+                ('has_protocol', 'has_result'),
                 ('_due_protocol', '_due_result'),
                 logit_data
             ):
@@ -1036,7 +1042,8 @@ class Command(PandasCommand):
                         'odds rt': 'OR (95% CI)'
                     })
 
-                    return df
+                    # Reorder columns for better readability
+                    return df[df.columns[::-1]]
 
                 # df.to_excel(
                 #     writer,
@@ -1060,20 +1067,23 @@ class Command(PandasCommand):
                         # We will rename this later
                         frequencies = self.pd.concat([
                             frequencies,
-                            self.pd.merge(
-                                df[var].fillna(str(np.nan))
-                                .value_counts()
-                                .rename('absolute').to_frame(),
-                                df[var].fillna(str(np.nan))
-                                .value_counts(normalize=True)
-                                .rename('relative').to_frame(),
-                                left_index=True,
-                                right_index=True,
-                            ).assign(variable=var)
+                            self.pd.crosstab(
+                                df[var].fillna(str(np.nan)),
+                                df[y_label],
+                                rownames=['value'],
+                                margins=True,
+                                margins_name='N'
+                            )
+                            .drop(columns=[False])
+                            .drop(index=['N'])
+                            .assign(
+                                variable=var,
+                                relative=lambda x: x[True] / x['N']
+                            )
                             .reset_index()
                             .rename(
                                 columns={
-                                    var: 'value'
+                                    True: 'absolute'
                                 }
                             )
                         ])
@@ -1113,10 +1123,6 @@ class Command(PandasCommand):
                 )
 
                 result = result.set_index(['variable', 'value']).sort_index()
-
-                # NOTE: Reorder columns so that p value come at the end
-                result = result[[*result.columns[::2].values,
-                                 *result.columns[1::2].values]]
 
                 result.to_excel(
                     writer,
