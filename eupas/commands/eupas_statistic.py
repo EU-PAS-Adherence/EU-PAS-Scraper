@@ -427,13 +427,13 @@ class Command(PandasCommand):
             mean_other_percentage=('funding_other_percentage', mean_mean),
             number_of_studies_with_result=('has_result', bool_sum),
             number_of_studies_with_protocol=('has_protocol', bool_sum),
-            number_of_studies_with_past_data_collection=(
+            number_of_studies_with_due_protocol=(
                 'past_data_collection', bool_sum),
-            number_of_studies_with_past_data_collection_and_protocol=(
+            number_of_studies_with_due_protocol_and_protocol=(
                 'past_data_collection_has_protocol', bool_sum),
-            number_of_studies_with_two_weeks_past_final_report=(
+            number_of_studies_with_due_result=(
                 'two_weeks_past_final_report', bool_sum),
-            number_of_studies_with_two_weeks_past_final_report_and_protocol=(
+            number_of_studies_with_due_result_and_protocol=(
                 'two_weeks_past_final_report_has_protocol', bool_sum)
         )
 
