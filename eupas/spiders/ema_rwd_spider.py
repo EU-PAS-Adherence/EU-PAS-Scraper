@@ -26,6 +26,7 @@ class RMP(Enum):
     non_EU_RPM = 54334
     not_applicable = 54335
 
+# TODO: Update / Fix this to work with the current website
 # NOTE: This Spider is unnecessary because of the native export capability of the new website.
 #       It is also much easier to write a scraper for this new website.
 

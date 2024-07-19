@@ -110,7 +110,7 @@ class Command(PandasCommand):
 
     def preprocess(self, df):
         '''
-        Excludes cancelles studies and applies useful transformations.
+        Excludes cancelled studies and applies useful transformations.
         '''
         import numpy as np
 
