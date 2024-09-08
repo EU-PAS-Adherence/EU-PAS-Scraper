@@ -2,7 +2,7 @@
 # commands/         Contains all custom commands extending the default scrapy commands
 # spiders/          Contains all spiders
 # validators/       Contains all jsonschemas for spidermons item validation.
-# contracts.py      Scrapys way of unit-testing NOTE: Unused.
+# contracts.py      NOTE: Unused. Scrapys way of unit-testing.
 # dupefilters.py    Custom Dupefilter for the eupas spider. Generates extra stats used in the monitors.
 # exporters.py      Custom XLSX and SQLITE exporters
 # extensions.py     Custom Extensions like the item History Comparer for the eupas item
