@@ -54,7 +54,7 @@ class Command(PandasCommand):
         'planned_duration_quartiles',
         'registration_year_grouped',
         'requested_by_regulator',
-        'study_topic_grouped',
+        # 'study_topic_grouped', # Highly correlated new field, not useful at time of extraction
         'study_type',
         'updated_state',
         'uses_established_data_source',
@@ -368,13 +368,13 @@ class Command(PandasCommand):
 
         # HELPER FUNCTIONS AND VARIABLE
 
-        def set_sum(x: PandasCommand.pd.Series):
+        def set_sum(x):
             return len(set(x.dropna().apply(list).sum()))
 
-        def bool_sum(x: PandasCommand.pd.Series):
+        def bool_sum(x):
             return x.dropna().astype(float).sum()
 
-        def setify(x: PandasCommand.pd.Series):
+        def setify(x):
             return '; '.join(sorted(list(set(x.dropna().apply(list).sum()))))
 
         dummie_agg = {
@@ -940,7 +940,7 @@ class Command(PandasCommand):
                 # )
 
                 # Create Frequency table of variables for each rmp category
-                rmp = df['risk_management_plan'].fillna('Not specified')
+                rmp = df['risk_management_plan'].fillna('Unspecified')
                 result = self.pd.DataFrame()
 
                 for col in self.frequency_fields:
