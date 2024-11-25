@@ -8,9 +8,10 @@ from scrapy import contracts
 
 
 class PostEncodedContract(contracts.Contract):
-    """ Contract to change the request to a post and set the body of the request.
-        The value should be a string like "GET" or "POST"
-    """
+    '''
+    Contract to change the request to a post and set the body of the request.
+    The value should be a string like "GET" or "POST"
+    '''
 
     name = 'postEncoded'
 

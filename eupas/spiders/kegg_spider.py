@@ -9,9 +9,8 @@ import re
 from scrapy import spiders, http, signals
 from tqdm import tqdm
 
+
 # NOTE: Substance matching is to complex and will not be used
-
-
 class KEGG_Drug_Spider(spiders.Spider):
     '''
     This KEGG Spider extracts drug data from the KEGG Rest Api.

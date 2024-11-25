@@ -26,11 +26,11 @@ class RMP(Enum):
     non_EU_RPM = 54334
     not_applicable = 54335
 
+
+# NOTE: This spider worked the last time at: 2024-02-21T23-20-00 (UTC+1)
 # TODO: Update / Fix this to work with the current website
 # NOTE: This Spider is unnecessary because of the native export capability of the new website.
 #       It is also much easier to write a scraper for this new website.
-
-
 class EMA_RWD_Spider(spiders.Spider):
     '''
     This Scrapy Spider extracts study data from the EU PAS Register.

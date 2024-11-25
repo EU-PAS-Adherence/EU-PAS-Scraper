@@ -6,11 +6,14 @@
 from scrapy import spiders, item, exceptions
 from itemadapter.adapter import ItemAdapter
 
-# NOTE: pipelines only work with one type of spider (EU_PAS_Spider)
+# NOTE: pipelines only work with one type of spider (EU_PAS_Spider/EMA_RWD_Spider)
 # and item (Study) and it is assumed that there is only one type of each!
 
 
 class DuplicatesPipeline:
+    '''
+    A Pipeline which detects duplicates using the EU PAS Register ID.
+    '''
 
     def open_spider(self, _: spiders.Spider):
         self.ids_seen = set()

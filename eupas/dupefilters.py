@@ -5,6 +5,7 @@ from scrapy.dupefilters import RFPDupeFilter
 
 
 class EupasDupeFilter(RFPDupeFilter):
+    # TODO: Adapt to EMA_RWD_Spider
 
     def log(self, request: Request, spider: Spider) -> None:
         if isinstance(spider, EU_PAS_Spider):

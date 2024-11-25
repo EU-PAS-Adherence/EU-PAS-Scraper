@@ -19,6 +19,7 @@ class SingleJsonItemStringExporter(BaseItemExporter):
 
 
 class ItemHistoryComparer:
+    # NOTE: Could be simplified by using Pandas
     changed_date_key = '$CHANGED_HAS_NEW_DATE'
     changed_eupas_key = '$CHANGED_EUPAS'
     changed_url_key = '$CHANGED_URL'

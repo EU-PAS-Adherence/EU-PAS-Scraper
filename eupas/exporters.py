@@ -31,9 +31,13 @@ def uri_params(params, spider: Spider):
 
 
 class XlsxItemExporter(BaseItemExporter):
-    # Modified from:
-    #   scrapy_xlsx (MIT License)
-    #   https://github.com/jesuslosada/scrapy-xlsx/blob/master/scrapy_xlsx/exporters.py
+    '''
+    A Scrapy Exporter to export items as an Excel-File (.xlsx)
+
+    Modified from:
+      scrapy_xlsx (MIT License)
+      https://github.com/jesuslosada/scrapy-xlsx/blob/master/scrapy_xlsx/exporters.py
+    '''
 
     def __init__(
         self,
