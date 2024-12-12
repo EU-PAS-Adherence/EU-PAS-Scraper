@@ -205,10 +205,21 @@ class Command(PandasCommand):
             'Pharmaceutical company and other private sector ': 'Private'
         }
 
-        def get_quartiles(s):
-            result = (self.pd.qcut(s, 4, labels=False, duplicates='drop') + 1) \
-                .fillna(0.0).astype(int)
-            return np.where(result == 0, self.pd.NA, result)
+        def get_and_save_quartiles(s):
+            # Get quartiles
+            quartiles, bins = self.pd.qcut(
+                s, 4, labels=False, retbins=True, duplicates='drop')
+            quartiles = (quartiles + 1).fillna(0.0).astype(int)
+            quartiles = np.where(quartiles == 0, self.pd.NA, quartiles)
+
+            # Save quartile intervals
+            self.logger.info(f'Quartile Intervals for {s.name}:\n{bins}')
+            np.save(
+                self.output_folder / f'{s.name}_quartile_intervals.npy',
+                bins
+            )
+
+            return quartiles
 
         # DURATION VARIABLE
 
@@ -296,7 +307,7 @@ class Command(PandasCommand):
             studied_medical_conditions=df['medical_conditions'].notna(),
             has_outcomes=df['outcomes'].notna(),
             planned_duration=planned_duration,
-            planned_duration_quartiles=lambda x: get_quartiles(
+            planned_duration_quartiles=lambda x: get_and_save_quartiles(
                 x['planned_duration']
             ),
             uses_established_data_source=df[[
@@ -496,6 +507,16 @@ class Command(PandasCommand):
 
             encoded.drop(columns=columns_to_drop, inplace=True)
 
+        # CONTINUOUS VARIABLE
+
+        encoded = self.pd.concat([
+            encoded,
+            df[[
+                'data_collection_busdays_difference',
+                'final_report_busdays_difference'
+            ]]
+        ], axis='columns')
+
         return encoded.rename(columns=self.python_name_converter)
 
     def run_logit(self, df, logit_map):
@@ -553,7 +574,7 @@ class Command(PandasCommand):
 
         return self.run_logit(df, logit_map)
 
-    def multivariate_lr(self, df, y):
+    def multivariate_lr(self, df, y, extra_drop_fields: list = []):
         '''
         Excludes multicollinear variables and runs multivariate logistic regression with encoded Dataframe as input.
         '''
@@ -561,11 +582,19 @@ class Command(PandasCommand):
         # DEFINE VARIABLES TO REMOVE LIKE FOR EXAMPLE MULTICOLLINEAR VARIABLES
 
         drop_fields = [
+            # NOTE: These could be exluded, but we prespecified the usage of all variables
             # 'studied_medical_conditions',  # NOTE: High LLR p-value (>0.25)
             # 'has_outcomes',  # NOTE: High LLR p-value (>0.25)
-            # NOTE: High Correlation with updated state, probably filled by ENCEPP team migrating finalized studies
+
+            # NOTE: Correlates with 'data_collection_busdays_difference' and 'final_report_busdays_difference'
+            'registration_year_grouped',
+
+            # NOTE: High Correlation with updated state, probably filled by ENCEPP team while migrating finalized studies
             'study_topic_grouped'
         ]
+
+        if extra_drop_fields:
+            drop_fields += extra_drop_fields
 
         variables = df.columns[
             ~df.columns.str.split(self.variables_seperator).str[0].isin(
@@ -616,10 +645,19 @@ class Command(PandasCommand):
         data = self.preprocess(self.read_input())
 
         # Adding outcomes
-        data = data.assign(
-            has_protocol=data.filter(like='protocol').notna(),
-            has_result=data.filter(like='result').notna().any(axis='columns')
-        )
+        if 'has_protocol' not in data.columns:
+            data.assign(
+                # NOTE: Not used in final analysis. This variable will be assigned beforehand based on the method below with some manually changed classifications
+                has_protocol=data.filter(like='protocol').notna()
+            )
+
+        if 'has_result' not in data.columns:
+            data.assign(
+                # NOTE: Not used in final analysis. This variable will be assigned beforehand based on manual classification
+                has_result=data.filter(
+                    like='result'
+                ).notna().any(axis='columns')
+            )
 
         self.logger.info('Generating categories...')
         variables = self.create_variables(data)
@@ -913,7 +951,14 @@ class Command(PandasCommand):
 
             self.logger.info(
                 'Running multivariate logistic regression and writing output...')
-            results = self.multivariate_lr(encoded_y, y_label)
+            results = self.multivariate_lr(
+                encoded_y, y_label,
+                extra_drop_fields=[
+                    'final_report_busdays_difference'
+                    if name == 'protocol'
+                    else 'data_collection_busdays_difference'
+                ]
+            )
             multivariate_summaries = save_model_results(
                 results,
                 'multivariate_models',
@@ -965,7 +1010,7 @@ class Command(PandasCommand):
                     )
 
                     combined = absolute[:-1].astype(str) + ' (' + (
-                        relative * 100).round(2).astype(str) + ')'
+                        relative * 100).round(1).astype(str) + ')'
 
                     # NOTE: Quickfix to prevent dtype changes for planned_duration_quartiles
                     # NOTE: This will also change the bool value names

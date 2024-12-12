@@ -153,15 +153,16 @@ class Command(PandasCommand):
         return "patch_name [options]"
 
     def short_desc(self):
-        return "Patch the input file by matching the provided field_names"
+        return "Patches the input file by adding extra columns"
+
+    def help(self):
+        return """Patches the input file by adding extra columns based on the arguments:
+            match        This will unify the centre or institution columns with the help of a matching spreadsheet
+            state        This will create a correct state column based on the dates provided
+            cancel       This will find cancelled studies with a list of regex patterns
+        """
 
     def run(self, args, opts):
-        '''
-        Performs different tasks based on arguments:
-            match        This will unify the centre or institution columns with the help of a matching spreadsheet\n
-            state        This will create a correct state column based on the dates provided\n
-            cancel       This will find cancelled studies with a list of regex patterns
-        '''
         import numpy as np
         super().run(args, opts)
 
