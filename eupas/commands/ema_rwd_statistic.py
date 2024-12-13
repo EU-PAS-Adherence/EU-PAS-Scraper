@@ -322,8 +322,13 @@ class Command(PandasCommand):
             #     lambda x: list(sorted(x)) if isinstance(x, list) else x).str.join('; ')
 
             # HELPER VARIABLES
-            data_collection_days_difference=np.datetime64(self.compare_datetime, 'D') -
-            df['data_collection_date_actual'],
+            data_collection_days_difference=np.busday_count(
+                df['data_collection_date_actual']
+                .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
+                np.datetime64(self.compare_datetime, 'D'),
+                weekmask='1111111',
+                holidays=self.downtime
+            ),
             data_collection_busdays_difference=np.busday_count(
                 df['data_collection_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
@@ -331,8 +336,13 @@ class Command(PandasCommand):
                 holidays=self.downtime
             ),
             due_protocol=lambda x: x['data_collection_busdays_difference'] > self.protocol_tolerance_busdays,
-            final_report_days_difference=np.datetime64(self.compare_datetime, 'D') -
-            df['final_report_date_actual'],
+            final_report_days_difference=np.busday_count(
+                df['final_report_date_actual']
+                .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
+                np.datetime64(self.compare_datetime, 'D'),
+                weekmask='1111111',
+                holidays=self.downtime
+            ),
             final_report_busdays_difference=np.busday_count(
                 df['final_report_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
@@ -512,8 +522,8 @@ class Command(PandasCommand):
         encoded = self.pd.concat([
             encoded,
             df[[
-                'data_collection_busdays_difference',
-                'final_report_busdays_difference'
+                'data_collection_days_difference',
+                'final_report_days_difference'
             ]]
         ], axis='columns')
 
@@ -586,7 +596,7 @@ class Command(PandasCommand):
             # 'studied_medical_conditions',  # NOTE: High LLR p-value (>0.25)
             # 'has_outcomes',  # NOTE: High LLR p-value (>0.25)
 
-            # NOTE: Correlates with 'data_collection_busdays_difference' and 'final_report_busdays_difference'
+            # NOTE: Correlates with 'data_collection_days_difference' and 'final_report_days_difference'
             'registration_year_grouped',
 
             # NOTE: High Correlation with updated state, probably filled by ENCEPP team while migrating finalized studies
@@ -954,9 +964,9 @@ class Command(PandasCommand):
             results = self.multivariate_lr(
                 encoded_y, y_label,
                 extra_drop_fields=[
-                    'final_report_busdays_difference'
+                    'final_report_days_difference'
                     if name == 'protocol'
-                    else 'data_collection_busdays_difference'
+                    else 'data_collection_days_difference'
                 ]
             )
             multivariate_summaries = save_model_results(
