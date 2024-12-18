@@ -1146,7 +1146,7 @@ class Command(PandasCommand):
                 frequencies = frequencies.assign(
                     **{
                         'n (%)': lambda x: x['absolute'].astype(str) + ' ('
-                        + (x['relative'] * 100).round(2).astype(str) + ')'
+                        + (x['relative'] * 100).round(1).astype(str) + ')'
                     },
                     name=lambda x: x['variable'].astype(str) + '__'
                     + x['value'].astype(str).map(self.python_name_converter)
