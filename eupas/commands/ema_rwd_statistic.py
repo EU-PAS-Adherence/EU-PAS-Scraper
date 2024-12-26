@@ -656,13 +656,13 @@ class Command(PandasCommand):
 
         # Adding outcomes
         if 'has_protocol' not in data.columns:
-            data.assign(
+            data = data.assign(
                 # NOTE: Not used in final analysis. This variable will be assigned beforehand based on the method below with some manually changed classifications
                 has_protocol=data.filter(like='protocol').notna()
             )
 
         if 'has_result' not in data.columns:
-            data.assign(
+            data = data.assign(
                 # NOTE: Not used in final analysis. This variable will be assigned beforehand based on manual classification
                 has_result=data.filter(
                     like='result'
@@ -1188,20 +1188,26 @@ class Command(PandasCommand):
         self.logger.info('Generating and writing extra plots...')
 
         plt.figure(dpi=300)
-        date = data['registration_date'].dt.to_period('M')
-        self.pd.concat(
-            [
-                data.groupby(date).size().rename('studies'),
-                data.groupby(date).size().cumsum().rename('cumulated studies')
-            ], axis='columns') \
-            .plot(
-                title='Frequency of studies by "Registration Date"',
-                xlabel='Registration Date',
-                ylabel='# of studies',
-                subplots=True
-        )
-        plt.savefig(self.output_folder / 'plots' /
-                    'registration_date_count_freq.png')
+        for df, label, name in [
+            (data, 'all studies', 'all'),
+            (variables_due_protocol, 'studies with protocol due', 'due_protocol'),
+            (variables_due_result, 'studies with results due', 'due_results')
+        ]:
+            date = df['registration_date'].dt.to_period('M')
+            self.pd.concat(
+                [
+                    df.groupby(date).size().rename('studies'),
+                    df.groupby(date).size().cumsum().rename(
+                        'cumulated studies')
+                ], axis='columns') \
+                .plot(
+                    title=f'Frequency of {label} by "Registration Date"',
+                    xlabel='Registration Date',
+                    ylabel='# of studies',
+                    subplots=True
+            )
+            plt.savefig(self.output_folder / 'plots' /
+                        f'registration_date_count_freq_{name}.png')
 
         plt.figure(dpi=300)
         variables.groupby(date)[['has_protocol', 'has_result']].sum().plot(
