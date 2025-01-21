@@ -171,6 +171,32 @@ class Command(PandasCommand):
         ###################################
         df = df.set_index(self.index_field).sort_index(axis='columns')
 
+        ###################################
+        #   CORRECT IMPLAUSIBLE OUTLIERS  #
+        ###################################
+        corrected_date_38752 = np.datetime64(
+            datetime(
+                year=2020,
+                month=1,
+                day=1
+            ), 'm'
+        )
+        df.loc[38752, 'data_collection_date_planed'] = corrected_date_38752
+        df.loc[38752, 'data_collection_date_actual'] = corrected_date_38752
+
+        # corrected_number_of_subjects_map = {
+        #     # Information from research paper: https://doi.org/10.1016/j.vaccine.2015.05.013
+        #     8429: 99_999_999, # Metastudy (39 studies) with multimillion sized populations in each study
+        #     # Information from research paper: https://doi.org/10.1007/s13340-018-0360-4
+        #     16082: 3_499_600, # No consequences (would still be grouped as >10000)
+        #     # Information from study results: https://catalogues.ema.europa.eu/node/1906/methodological-aspects
+        #     25192: 99_999_999, # Population of Europe (EudraVigilance and VigiBase)
+        #     # Information from study results: https://catalogues.ema.europa.eu/node/1985/methodological-aspects
+        #     27963: 99_999_999 # Population of Europe (EudraVigilance)
+        # }
+        # for key, value in corrected_number_of_subjects_map.items():
+        #     df.loc[key, 'number_of_subjects'] = value
+
         return df
 
     def create_variables(self, df):
@@ -1080,9 +1106,9 @@ class Command(PandasCommand):
                         axis='columns'
                     )
 
-                    df['odds rt'] = df['odds rt'].round(2).astype(str) + ' (' + \
-                        df['[0.025'].round(2).astype(str) + ' - ' + \
-                        df['0.975]'].round(2).astype(str) + ')'
+                    df['odds rt'] = df['odds rt'].round(2).map('{:,.2f}'.format) + ' (' + \
+                        df['[0.025'].round(2).map('{:,.2f}'.format) + ' - ' + \
+                        df['0.975]'].round(2).map('{:,.2f}'.format) + ')'
 
                     df = df.drop(
                         [
