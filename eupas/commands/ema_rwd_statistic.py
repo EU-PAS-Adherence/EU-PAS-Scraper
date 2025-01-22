@@ -177,8 +177,8 @@ class Command(PandasCommand):
         corrected_date_38752 = np.datetime64(
             datetime(
                 year=2020,
-                month=1,
-                day=1
+                month=12,
+                day=22
             ), 'm'
         )
         df.loc[38752, 'data_collection_date_planed'] = corrected_date_38752
