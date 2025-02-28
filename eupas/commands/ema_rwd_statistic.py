@@ -223,12 +223,24 @@ class Command(PandasCommand):
         }
 
         funding_map = {
-            'EMA': 'Public',
-            'EU institutional research programme': 'Public',
-            'No external funding': self.pd.NA,
-            'Non for-profit organisation (e.g. charity)': 'Public',
-            'Other': 'Other',
-            'Pharmaceutical company and other private sector ': 'Private'
+            # These values can not be grouped and have to be mapped manually
+            # These values should be overriden by funding_sources_grouped_override if a manual mappping is desired
+            # Uncomment to map these to 'Unclear' instead of pd.NA
+            # 'EMA; Other': 'Unclear',
+            # 'EU institutional research programme; Other': 'Unclear',
+            # 'Non for-profit organisation (e.g. charity); Other': 'Unclear',
+            # 'Other': 'Unclear',
+            # 'Other; Pharmaceutical company and other private sector\xa0': 'Unclear',
+            # These values are groupable
+            'EMA': 'Non-Commercial',
+            'EU institutional research programme': 'Non-Commercial',
+            'EU institutional research programme; Non for-profit organisation (e.g. charity); Other; Pharmaceutical company and other private sector\xa0': 'Mixed',
+            'EU institutional research programme; Pharmaceutical company and other private sector\xa0': 'Mixed',
+            'No external funding': 'No Funding',
+            'Non for-profit organisation (e.g. charity)': 'Non-Commercial',
+            'Non for-profit organisation (e.g. charity); Other; Pharmaceutical company and other private sector\xa0': 'Mixed',
+            'Non for-profit organisation (e.g. charity); Pharmaceutical company and other private sector\xa0': 'Mixed',
+            'Pharmaceutical company and other private sector\xa0': 'Commercial'
         }
 
         def get_and_save_quartiles(s):
@@ -265,7 +277,8 @@ class Command(PandasCommand):
             'registration_date',
             # HELPER VARIABLES
             'data_collection_date_actual', 'final_report_date_actual',
-            'has_protocol', 'has_result'
+            'has_protocol', 'has_result',
+            'funding_sources_grouped_override'
         ]]
 
         # ASSIGN OTHER VARIABLES
@@ -293,14 +306,8 @@ class Command(PandasCommand):
             funding_sources=df['funding_sources'].apply(
                 lambda x: list(sorted(x)) if isinstance(x, list) else x
             ).str.join('; '),
-            funding_sources_grouped=df['funding_sources'].apply(
-                lambda sources:
-                'Other' if not isinstance(sources, list) else
-                'Other' if {'No external funding'}.issuperset(sources) else
-                '; '.join(sorted(list(
-                    {'Public', 'Private'} & set(
-                        funding_map[x] for x in sources)
-                ))) or 'Other'
+            funding_sources_grouped=lambda x: df['funding_sources_grouped_override'].combine_first(
+                x['funding_sources'].map(funding_map).fillna('No Funding')
             ),
             multiple_funding_sources=df['funding_sources'].apply(
                 lambda x: len(x) if isinstance(x, list) else 0
@@ -486,7 +493,7 @@ class Command(PandasCommand):
             'updated_state': 'Finalised',
             'study_type': 'Non-interventional study',
             'number_of_countries_grouped': 'Single Country',
-            'funding_sources_grouped': 'Private',
+            'funding_sources_grouped': 'Commercial',
             'multiple_funding_sources': False,
             'age_population': '18+ years',
             'number_of_subjects_grouped': '100-<500',
@@ -693,6 +700,12 @@ class Command(PandasCommand):
                 has_result=data.filter(
                     like='result'
                 ).notna().any(axis='columns')
+            )
+
+        if 'funding_sources_grouped_override' not in data.columns:
+            data = data.assign(
+                # NOTE: Not used in final analysis. This variable will be assigned beforehand based on manual classification
+                funding_sources_grouped_override=self.pd.NA
             )
 
         self.logger.info('Generating categories...')
