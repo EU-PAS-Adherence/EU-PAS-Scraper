@@ -201,14 +201,20 @@ class Command(PandasCommand):
             )
 
             for field_name in match_fields:
-                merge_data = matching_data[field_name] \
-                    .loc[:, ['manual', 'original']]
+                if self.match_type == EMA_RWD_Study:
+                    merge_data = matching_data[field_name] \
+                        .loc[:, ['manual', 'original', 'multiple_funding_sources_override']]
 
-                if self.match_type == EMA_RWD_Study and field_name == 'funding_details':
                     # Join multiple assignments together to ensure m:1 mapping in next step
                     merge_data = merge_data.groupby('original') \
-                        .agg(lambda x: '; '.join(sorted(set(x)))) \
+                        .agg({
+                            'manual': lambda x: '; '.join(sorted(set(x))),
+                            'multiple_funding_sources_override': 'first'
+                        }) \
                         .reset_index()
+                else:
+                    merge_data = matching_data[field_name] \
+                        .loc[:, ['manual', 'original']]
 
                 # NOTE: If validation fails: check for duplicate original values in the matching file or values matching the na_values
                 data = self.pd.merge(
