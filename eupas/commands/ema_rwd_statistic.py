@@ -49,6 +49,7 @@ class Command(PandasCommand):
         'has_outcomes',
         'multiple_funding_sources',
         'number_of_countries_grouped',
+        'number_of_studies_funded_by_biggest_sponsor_quartiles',
         'number_of_subjects_grouped',
         'planned_duration_quartiles',
         'registration_year_grouped',
@@ -109,6 +110,23 @@ class Command(PandasCommand):
             self.compare_datetime = np.datetime64(
                 datetime.now(timezone.utc), 'm'
             )
+
+    def get_and_save_quartiles(self, s):
+        import numpy as np
+        # Get quartiles
+        quartiles, bins = self.pd.qcut(
+            s, 4, labels=False, retbins=True, duplicates='drop')
+        quartiles = (quartiles + 1).fillna(0.0).astype(int)
+        quartiles = np.where(quartiles == 0, self.pd.NA, quartiles)
+
+        # Save quartile intervals
+        self.logger.info(f'Quartile Intervals for {s.name}:\n{bins}')
+        np.save(
+            self.output_folder / f'{s.name}_quartile_intervals.npy',
+            bins
+        )
+
+        return quartiles
 
     def preprocess(self, df):
         '''
@@ -274,22 +292,6 @@ class Command(PandasCommand):
             'Pharmaceutical company and other private sector\xa0': 'Commercial'
         }
 
-        def get_and_save_quartiles(s):
-            # Get quartiles
-            quartiles, bins = self.pd.qcut(
-                s, 4, labels=False, retbins=True, duplicates='drop')
-            quartiles = (quartiles + 1).fillna(0.0).astype(int)
-            quartiles = np.where(quartiles == 0, self.pd.NA, quartiles)
-
-            # Save quartile intervals
-            self.logger.info(f'Quartile Intervals for {s.name}:\n{bins}')
-            np.save(
-                self.output_folder / f'{s.name}_quartile_intervals.npy',
-                bins
-            )
-
-            return quartiles
-
         # DURATION VARIABLE
 
         planned_duration = df.loc[
@@ -354,7 +356,7 @@ class Command(PandasCommand):
             ),
             has_outcomes=df['outcomes'].notna(),
             planned_duration=planned_duration,
-            planned_duration_quartiles=lambda x: get_and_save_quartiles(
+            planned_duration_quartiles=lambda x: self.get_and_save_quartiles(
                 x['planned_duration']
             ),
             uses_established_data_source=df[[
@@ -578,7 +580,8 @@ class Command(PandasCommand):
             'has_outcomes': False,
             'collaboration_with_research_network': False,
             'uses_established_data_source': False,
-            'registration_year_grouped': '2010-2013'
+            'registration_year_grouped': '2010-2013',
+            'number_of_studies_funded_by_biggest_sponsor_quartiles': 4
         }
 
         dummy_with_na_drop_map = {
@@ -797,6 +800,39 @@ class Command(PandasCommand):
         self.logger.info('Writing some preanalysis data...')
         self.write_output(data, '_statistics_preprocessed')
 
+        self.logger.info('Generating and writing part 3 of analysis...')
+        self.logger.info(
+            'This is done first to generate an additional category for part 1+2'
+        )
+        data_to_group = variables.merge(
+            data.loc[:, [self.funding_field_name, 'countries']],
+            left_index=True,
+            right_index=True
+        )
+        grouped_agg = self.create_grouped_agg(data_to_group)
+        self.write_output(grouped_agg, '_statistics_funding_all')
+
+        self.logger.info('Generating additional category...')
+        variables = self.pd.merge(
+            variables,
+            self.pd.merge(
+                data[self.funding_field_name].explode().to_frame(),
+                grouped_agg['num_studies'],
+                left_on=self.funding_field_name,
+                right_index=True
+            ).sort_index().groupby(level=0).agg(
+                number_of_studies_funded_by_biggest_sponsor=(
+                    'num_studies', 'max')
+            ).assign(
+                number_of_studies_funded_by_biggest_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
+                    df['number_of_studies_funded_by_biggest_sponsor']
+                )
+            ),
+            left_index=True,
+            right_index=True
+        )
+
+        self.logger.info('Generating and writing population data...')
         # NOTE: This is the population of studies, which should have protocols available
         variables_due_protocol = variables[variables['due_protocol']]
 
@@ -944,15 +980,6 @@ class Command(PandasCommand):
                         startrow=4
                     )
 
-        self.logger.info('Generating and writing part 3 of analysis...')
-        data_to_group = variables.merge(
-            data.loc[:, [self.funding_field_name, 'countries']],
-            left_index=True,
-            right_index=True
-        )
-        grouped_agg = self.create_grouped_agg(data_to_group)
-        self.write_output(grouped_agg, '_statistics_funding_all')
-
         self.logger.info('Write website data...')
         grouped_agg.reset_index().rename(
             columns={self.funding_field_name: 'name'}
@@ -992,7 +1019,8 @@ class Command(PandasCommand):
                 how='right'
             )
             self.write_output(
-                encoded_y, f'_statistics_encoded_variables_{name}')
+                encoded_y, f'_statistics_encoded_variables_{name}'
+            )
 
             self.logger.info(
                 'Generating and writing correlations for logistic regression...')
