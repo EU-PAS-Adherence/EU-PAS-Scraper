@@ -141,11 +141,6 @@ class Command(PandasCommand):
             df[self.funding_field_name]
         )
 
-        print(df[self.funding_field_name].fillna(EMA)
-              .str.split('; ').apply(
-            lambda x: list(set(x).union(set([EMA])))
-        ))
-
         df[self.funding_field_name] = np.where(
             df['funding_sources'].fillna(self.temp_na_name)
             .str.contains("EMA", regex=False),
@@ -305,6 +300,10 @@ class Command(PandasCommand):
         # NOTE: There are some studies with negative planned_duration
         planned_duration[planned_duration <= np.timedelta64(0)] = self.pd.NA
 
+        # FIRST REGISTRATION DATE FOR SENSITIVITY ANALYSIS VARIABLE
+
+        first_database_registration_date = df['registration_date'].min()
+
         # COPY UNCHANGED VARIABLES
 
         variables = df.loc[:, [
@@ -397,6 +396,7 @@ class Command(PandasCommand):
                 ))) or 'Other'
             ),
             # HELPER VARIABLES
+            # Logistic regression variable
             data_collection_days_difference=np.busday_count(
                 df['data_collection_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
@@ -404,6 +404,18 @@ class Command(PandasCommand):
                 weekmask='1111111',
                 holidays=self.downtime
             ),
+            # Logistic regression variables (sensitivity analysis)
+            data_collection_date_actual_clipped=df['data_collection_date_actual'].clip(
+                lower=first_database_registration_date
+            ),
+            data_collection_days_difference_clipped=lambda x: np.busday_count(
+                x['data_collection_date_actual_clipped']
+                .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
+                np.datetime64(self.compare_datetime, 'D'),
+                weekmask='1111111',
+                holidays=self.downtime
+            ),
+            # Variables used to detect due protocol population
             data_collection_busdays_difference=np.busday_count(
                 df['data_collection_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
@@ -411,6 +423,15 @@ class Command(PandasCommand):
                 holidays=self.downtime
             ),
             due_protocol=lambda x: x['data_collection_busdays_difference'] > self.protocol_tolerance_busdays,
+            # Variable used for other analysis
+            # NOTE: We can ignore the downtime in 2024 ('2024-01-23'-'2024-02-14'), because we are interested in the due year only.
+            # Adding the downtime to the latest data_collection_date_actual will not change the due year
+            # of the latest possible entries with downtime (from January 2024 to February 2024) in the extracted cohort.
+            due_protocol_year=(
+                df['data_collection_date_actual'] +
+                self.pd.offsets.BusinessDay(self.protocol_tolerance_busdays)
+            ).dt.year,
+            # Logistic regression variable
             final_report_days_difference=np.busday_count(
                 df['final_report_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
@@ -418,6 +439,18 @@ class Command(PandasCommand):
                 weekmask='1111111',
                 holidays=self.downtime
             ),
+            # Logistic regression variables (sensitivity analysis)
+            final_report_date_actual_clipped=df['final_report_date_actual'].clip(
+                lower=first_database_registration_date
+            ),
+            final_report_days_difference_clipped=lambda x: np.busday_count(
+                x['final_report_date_actual_clipped']
+                .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
+                np.datetime64(self.compare_datetime, 'D'),
+                weekmask='1111111',
+                holidays=self.downtime
+            ),
+            # Variables used to detect due result population
             final_report_busdays_difference=np.busday_count(
                 df['final_report_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
@@ -425,6 +458,14 @@ class Command(PandasCommand):
                 holidays=self.downtime
             ),
             due_result=lambda x: x['final_report_busdays_difference'] > self.results_tolerance_busdays,
+            # Variable used for other analysis
+            # NOTE: We can ignore the downtime in 2024 ('2024-01-23'-'2024-02-14'), because we are interested in the due year only.
+            # Adding the downtime to the latest final_report_busdays_difference will not change the due year
+            # of the latest possible entries with downtime (from January 2024 to February 2024) in the extracted cohort.
+            due_result_year=(
+                df['final_report_date_actual'] +
+                self.pd.offsets.BusinessDay(self.results_tolerance_busdays)
+            ).dt.year
         )
 
         return variables.sort_index(axis='columns')
