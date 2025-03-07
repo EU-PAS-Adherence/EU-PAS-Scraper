@@ -111,7 +111,7 @@ class Command(PandasCommand):
                 datetime.now(timezone.utc), 'm'
             )
 
-    def get_and_save_quartiles(self, s):
+    def get_and_save_quartiles(self, s, suffix=''):
         import numpy as np
         # Get quartiles
         quartiles, bins = self.pd.qcut(
@@ -122,7 +122,8 @@ class Command(PandasCommand):
         # Save quartile intervals
         self.logger.info(f'Quartile Intervals for {s.name}:\n{bins}')
         np.save(
-            self.output_folder / f'{s.name}_quartile_intervals.npy',
+            self.output_folder /
+            f'{s.name}_quartile_intervals{suffix}.npy',
             bins
         )
 
@@ -356,9 +357,6 @@ class Command(PandasCommand):
             ),
             has_outcomes=df['outcomes'].notna(),
             planned_duration=planned_duration,
-            planned_duration_quartiles=lambda x: self.get_and_save_quartiles(
-                x['planned_duration']
-            ),
             uses_established_data_source=df[[
                 'data_sources_registered_with_encepp',
                 'data_sources_not_registered_with_encepp'
@@ -823,21 +821,38 @@ class Command(PandasCommand):
             ).sort_index().groupby(level=0).agg(
                 number_of_studies_funded_by_biggest_sponsor=(
                     'num_studies', 'max')
-            ).assign(
-                number_of_studies_funded_by_biggest_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
-                    df['number_of_studies_funded_by_biggest_sponsor']
-                )
             ),
             left_index=True,
             right_index=True
+        ).assign(
+            number_of_studies_funded_by_biggest_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
+                df['number_of_studies_funded_by_biggest_sponsor'], '_all'
+            ),
+            planned_duration_quartiles=lambda df: self.get_and_save_quartiles(
+                df['planned_duration'], '_all'
+            )
         )
 
         self.logger.info('Generating and writing population data...')
         # NOTE: This is the population of studies, which should have protocols available
-        variables_due_protocol = variables[variables['due_protocol']]
+        variables_due_protocol = variables[variables['due_protocol']].assign(
+            number_of_studies_funded_by_biggest_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
+                df['number_of_studies_funded_by_biggest_sponsor'], '_due_protocol'
+            ),
+            planned_duration_quartiles=lambda df: self.get_and_save_quartiles(
+                df['planned_duration'], '_due_protocol'
+            )
+        )
 
         # NOTE: This is the population of studies, which should have results available
-        variables_due_result = variables[variables['due_result']]
+        variables_due_result = variables[variables['due_result']].assign(
+            number_of_studies_funded_by_biggest_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
+                df['number_of_studies_funded_by_biggest_sponsor'], '_due_result'
+            ),
+            planned_duration_quartiles=lambda df: self.get_and_save_quartiles(
+                df['planned_duration'], '_due_result'
+            )
+        )
 
         with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables.xlsx', engine='openpyxl') as writer:
 
