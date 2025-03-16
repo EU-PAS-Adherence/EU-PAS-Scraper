@@ -32,6 +32,14 @@ class Command(PandasCommand):
     ################################
     #  LISTS USED IN RUN FUNCTION  #
     ################################
+    override_fields = [
+        '$UPDATED_state_override',
+        'data_collection_date_actual_override',
+        'final_report_date_actual_override',
+        'funding_sources_grouped_override',
+        'multiple_funding_sources_override'
+    ]
+
     required_rmp = ['EU RMP category 1 (imposed as condition of marketing authorisation)',
                     'EU RMP category 2 (specific obligation of marketing authorisation)']
 
@@ -148,7 +156,7 @@ class Command(PandasCommand):
         df = df.loc[~df[self.cancel_field]]
 
         ###################################
-        #     TRASNFORM FUNDING FIELD     #
+        #     TRANSFORM FUNDING FIELD     #
         ###################################
         EMA = 'European Medicines Agency (EMA)'
         NO_FUNDING = '$NoFunding'
@@ -314,14 +322,15 @@ class Command(PandasCommand):
             'requested_by_regulator', 'number_of_subjects',
             'registration_date',
             # HELPER VARIABLES
-            'data_collection_date_actual', 'final_report_date_actual',
             'has_protocol', 'has_result'
         ]]
 
         # ASSIGN OTHER VARIABLES
 
         variables = variables.assign(
-            updated_state=df['$UPDATED_state'],
+            updated_state=df['$UPDATED_state_override'].combine_first(
+                df['$UPDATED_state']
+            ),
             number_of_countries=df['countries'].apply(len),
             number_of_countries_grouped=df['countries'].apply(
                 lambda x: 'Single Country' if len(x) == 1
@@ -396,16 +405,20 @@ class Command(PandasCommand):
                 ))) or 'Other'
             ),
             # HELPER VARIABLES
-            # Logistic regression variable
-            data_collection_days_difference=np.busday_count(
+            # Fixed date
+            data_collection_date_actual=df['data_collection_date_actual_override'].combine_first(
                 df['data_collection_date_actual']
+            ),
+            # Logistic regression variable
+            data_collection_days_difference=lambda x: np.busday_count(
+                x['data_collection_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
                 np.datetime64(self.compare_datetime, 'D'),
                 weekmask='1111111',
                 holidays=self.downtime
             ),
             # Logistic regression variables (sensitivity analysis)
-            data_collection_date_actual_clipped=df['data_collection_date_actual'].clip(
+            data_collection_date_actual_clipped=lambda x: x['data_collection_date_actual'].clip(
                 lower=first_database_registration_date
             ),
             data_collection_days_difference_clipped=lambda x: np.busday_count(
@@ -416,8 +429,8 @@ class Command(PandasCommand):
                 holidays=self.downtime
             ),
             # Variables used to detect due protocol population
-            data_collection_busdays_difference=np.busday_count(
-                df['data_collection_date_actual']
+            data_collection_busdays_difference=lambda x: np.busday_count(
+                x['data_collection_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
                 np.datetime64(self.compare_datetime, 'D'),
                 holidays=self.downtime
@@ -427,20 +440,24 @@ class Command(PandasCommand):
             # NOTE: We can ignore the downtime in 2024 ('2024-01-23'-'2024-02-14'), because we are interested in the due year only.
             # Adding the downtime to the latest data_collection_date_actual will not change the due year
             # of the latest possible entries with downtime (from January 2024 to February 2024) in the extracted cohort.
-            due_protocol_year=(
-                df['data_collection_date_actual'] +
+            due_protocol_year=lambda x: (
+                x['data_collection_date_actual'] +
                 self.pd.offsets.BusinessDay(self.protocol_tolerance_busdays)
             ).dt.year,
-            # Logistic regression variable
-            final_report_days_difference=np.busday_count(
+            # Fixed date
+            final_report_date_actual=df['final_report_date_actual_override'].combine_first(
                 df['final_report_date_actual']
+            ),
+            # Logistic regression variable
+            final_report_days_difference=lambda x: np.busday_count(
+                x['final_report_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
                 np.datetime64(self.compare_datetime, 'D'),
                 weekmask='1111111',
                 holidays=self.downtime
             ),
             # Logistic regression variables (sensitivity analysis)
-            final_report_date_actual_clipped=df['final_report_date_actual'].clip(
+            final_report_date_actual_clipped=lambda x: x['final_report_date_actual'].clip(
                 lower=first_database_registration_date
             ),
             final_report_days_difference_clipped=lambda x: np.busday_count(
@@ -451,8 +468,8 @@ class Command(PandasCommand):
                 holidays=self.downtime
             ),
             # Variables used to detect due result population
-            final_report_busdays_difference=np.busday_count(
-                df['final_report_date_actual']
+            final_report_busdays_difference=lambda x: np.busday_count(
+                x['final_report_date_actual']
                 .fillna(self.compare_datetime + np.timedelta64(1, 'D')).dt.date.tolist(),
                 np.datetime64(self.compare_datetime, 'D'),
                 holidays=self.downtime
@@ -462,8 +479,8 @@ class Command(PandasCommand):
             # NOTE: We can ignore the downtime in 2024 ('2024-01-23'-'2024-02-14'), because we are interested in the due year only.
             # Adding the downtime to the latest final_report_busdays_difference will not change the due year
             # of the latest possible entries with downtime (from January 2024 to February 2024) in the extracted cohort.
-            due_result_year=(
-                df['final_report_date_actual'] +
+            due_result_year=lambda x: (
+                x['final_report_date_actual'] +
                 self.pd.offsets.BusinessDay(self.results_tolerance_busdays)
             ).dt.year
         )
@@ -710,6 +727,9 @@ class Command(PandasCommand):
             # NOTE: Correlates with 'data_collection_days_difference' and 'final_report_days_difference'
             'registration_year_grouped',
 
+            # NOTE: Inplausible values, low validity
+            'requested_by_regulator',
+
             # NOTE: High Correlation with updated state, probably filled by ENCEPP team while migrating finalized studies
             'study_topic_grouped'
         ]
@@ -780,17 +800,12 @@ class Command(PandasCommand):
                 ).notna().any(axis='columns')
             )
 
-        if 'funding_sources_grouped_override' not in data.columns:
-            data = data.assign(
-                # NOTE: Not used in final analysis. This variable will be assigned beforehand based on manual classification
-                funding_sources_grouped_override=self.pd.NA
-            )
-
-        if 'multiple_funding_sources_override' not in data.columns:
-            data = data.assign(
-                # NOTE: Not used in final analysis. This variable will be assigned beforehand based on manual classification
-                multiple_funding_sources_override=self.pd.NA
-            )
+        for variable in self.override_fields:
+            if variable not in data.columns:
+                data = data.assign(
+                    # NOTE: Not used like this in final analysis. These variables should be assigned beforehand based on manual classification
+                    **{variable: self.pd.NA}
+                )
 
         self.logger.info('Generating categories...')
         variables = self.create_variables(data)
@@ -1376,6 +1391,7 @@ class Command(PandasCommand):
                         f'registration_date_count_freq_{name}.png')
 
         plt.figure(dpi=300)
+        date = data['registration_date'].dt.to_period('M')
         variables.groupby(date)[['has_protocol', 'has_result']].sum().plot(
             title='Frequency of studies with protocol or results by "Registration Date"',
             xlabel='Registration Date',
