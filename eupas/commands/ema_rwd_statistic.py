@@ -692,10 +692,14 @@ class Command(PandasCommand):
         '''
         Runs univariate logistic regression with encoded Dataframe as input.
         '''
-        variables = sorted({
-            col.split(self.variables_seperator)[0] for col in df.columns
-            if self.variables_seperator in col
-        })
+        variables = sorted(
+            {
+                col.split(self.variables_seperator)[0] for col in df.columns
+                if self.variables_seperator in col
+            }.union(
+                {'data_collection_days_difference', 'final_report_days_difference'}
+            )
+        )
 
         logit_map = [
             (
