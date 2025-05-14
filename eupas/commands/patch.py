@@ -164,7 +164,7 @@ class Command(PandasCommand):
 
     def run(self, args, opts):
         import numpy as np
-        super().run(args, opts)
+        import pandas as pd
 
         if len(args) == 0:
             raise UsageError(
@@ -178,7 +178,7 @@ class Command(PandasCommand):
 
         self.logger = logging.getLogger()
         self.logger.info('Starting patch script')
-        self.logger.info(f'Pandas {self.pd.__version__}')
+        self.logger.info(f'Pandas {pd.__version__}')
         self.logger.info('Reading input data...')
         data = self.read_input()
 
@@ -192,7 +192,7 @@ class Command(PandasCommand):
                     "At least one match value isn't a valid field name", print_help=False)
 
             self.logger.info('\tReading matching data...')
-            matching_data = self.pd.read_excel(
+            matching_data = pd.read_excel(
                 self.match_input_path,
                 sheet_name=match_fields,
                 keep_default_na=False,
@@ -217,7 +217,7 @@ class Command(PandasCommand):
                         .loc[:, ['manual', 'original']]
 
                 # NOTE: If validation fails: check for duplicate original values in the matching file or values matching the na_values
-                data = self.pd.merge(
+                data = pd.merge(
                     data,
                     merge_data.rename(
                         columns={
@@ -236,7 +236,7 @@ class Command(PandasCommand):
             data.loc[
                 data[self.matched_meta_field_name] == '',
                 self.matched_meta_field_name
-            ] = self.pd.NA
+            ] = pd.NA
 
             self.logger.info('Matching finished')
 
@@ -287,7 +287,7 @@ class Command(PandasCommand):
                                 data['funding_contract_date_planed'].notna()
                                 | data['funding_contract_date_actual'].notna(),
                                 'Planned',
-                                self.pd.NA
+                                pd.NA
                             )
                         )
                     ),

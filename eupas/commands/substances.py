@@ -67,12 +67,12 @@ class Command(PandasCommand):
         '''
         Runs KEGG and ATC Spider to generate a matching spread sheet for the substances.
         '''
-        super().run(args, opts)
         import numpy as np
+        import pandas as pd
 
         self.logger = logging.getLogger()
         self.logger.info('Starting substances script')
-        self.logger.info(f'Pandas {self.pd.__version__}')
+        self.logger.info(f'Pandas {pd.__version__}')
         self.logger.info('Reading input data...')
         data = self.read_input()
 
@@ -95,16 +95,16 @@ class Command(PandasCommand):
         substance_atc.drop_duplicates().reset_index(drop=True)
 
         self.logger.info('Aquiring KEGG data...')
-        kegg = self.pd.DataFrame()
+        kegg = pd.DataFrame()
         kegg_db_path = self.output_folder / 'kegg.txt'
         if kegg_db_path.is_file():
-            kegg = self.pd.DataFrame([row.split('\t') for row in kegg_db_path.read_text(
+            kegg = pd.DataFrame([row.split('\t') for row in kegg_db_path.read_text(
             ).split('\n')[:-1]], columns=['kegg_drug_entry_id', 'all_kegg_drug_names'])
         else:
             response = requests.get('https://rest.kegg.jp/list/drug')
             if response.ok:
                 kegg_db_path.write_text(response.text)
-                kegg = self.pd.DataFrame([row.split('\t') for row in response.text.split(
+                kegg = pd.DataFrame([row.split('\t') for row in response.text.split(
                     '\n')[:-1]], columns=['kegg_drug_entry_id', 'all_kegg_drug_names'])
             else:
                 raise RuntimeError('KEGG rest api not responding ok.')
@@ -121,11 +121,11 @@ class Command(PandasCommand):
         self.logger.info('Matching INN to KEGG...')
 
         def get_matching_rows(search_terms, df, column, assigned_column, prefix='', filter_matches=lambda x: x.iloc[[0]]):
-            matching_rows = self.pd.DataFrame()
+            matching_rows = pd.DataFrame()
             for search_term in search_terms:
                 info = f'{prefix}No match'
-                match = self.pd.DataFrame(
-                    [[self.pd.NA] * len(df.columns)], columns=df.columns.values)
+                match = pd.DataFrame(
+                    [[pd.NA] * len(df.columns)], columns=df.columns.values)
 
                 exact_matches = df[df[column].str.fullmatch(
                     re.escape(search_term), case=False, na=False)]
@@ -153,7 +153,7 @@ class Command(PandasCommand):
                     info = f'{prefix}Full match'
                     match = filter_matches(exact_matches)
 
-                matching_rows = self.pd.concat([matching_rows, match.assign(
+                matching_rows = pd.concat([matching_rows, match.assign(
                     **{assigned_column: search_term, 'info': info})], ignore_index=True)
 
             return matching_rows.reset_index(drop=True)
@@ -184,7 +184,7 @@ class Command(PandasCommand):
         kegg_drug_ids_to_match = set(
             matching_rows['kegg_drug_entry_id'].dropna().unique().tolist())
         if kegg_details_path.is_file():
-            kegg_details = self.pd.read_csv(
+            kegg_details = pd.read_csv(
                 kegg_details_path.as_posix()).drop_duplicates()
 
             kegg_drug_ids_to_match -= set(
@@ -201,7 +201,7 @@ class Command(PandasCommand):
             }}
             self.settings.set("FEEDS", feeds, priority="cmdline")
             CrawlCommand.run(self, [KEGG_Drug_Spider.name], opts)
-            kegg_details = self.pd.read_csv(
+            kegg_details = pd.read_csv(
                 kegg_details_path.as_posix()).drop_duplicates()
 
         self.logger.info('Merging INN data...')
@@ -225,7 +225,7 @@ class Command(PandasCommand):
             self.settings.set("FEEDS", feeds, priority="cmdline")
             CrawlCommand.run(self, [ATC_Spider.name], opts)
 
-        who_atc = self.pd.read_csv(
+        who_atc = pd.read_csv(
             atc_details_path.as_posix()).drop_duplicates()
 
         self.logger.info('Merging ATC data...')
@@ -235,7 +235,7 @@ class Command(PandasCommand):
         self.logger.info('Fill missing ATC data...')
         prefix = 'ATC Code: '
         substance_atc = substance_atc.assign(info=np.where(
-            substance_atc['atc_code'].notna(), f'{prefix}Full match', self.pd.NA))
+            substance_atc['atc_code'].notna(), f'{prefix}Full match', pd.NA))
 
         def filter_atc_matches(matches):
             if len(matches) > 1:
@@ -265,7 +265,7 @@ class Command(PandasCommand):
             columns=[f'{column}{merge_suffix}' for column in override_columns], inplace=True)
 
         self.logger.info('Writing substance data...')
-        with self.pd.ExcelWriter(self.output_folder / 'substances.xlsx', engine='openpyxl') as writer:
+        with pd.ExcelWriter(self.output_folder / 'substances.xlsx', engine='openpyxl') as writer:
             substance_inn.to_excel(
                 writer, sheet_name='substance_inn', index=False)
             substance_atc.to_excel(

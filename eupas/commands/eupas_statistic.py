@@ -115,6 +115,7 @@ class Command(PandasCommand):
         Excludes cancelles studies and applies useful transformations.
         '''
         import numpy as np
+        import pandas as pd
 
         ###################################
         #    EXCLUDE CANCELLED STUDIES    #
@@ -183,7 +184,7 @@ class Command(PandasCommand):
         df.loc[df['requested_by_regulator'] ==
                'No', 'requested_by_regulator'] = False
         df.loc[df['requested_by_regulator'] ==
-               "Don't know", 'requested_by_regulator'] = self.pd.NA
+               "Don't know", 'requested_by_regulator'] = pd.NA
 
         ###################################
         #        FILL EMPTY VALUES        #
@@ -209,6 +210,7 @@ class Command(PandasCommand):
         Creates mostly categorical variables from preprocessed Dataframe.
         '''
         import numpy as np
+        import pandas as pd
 
         # HELPER MAPS AND FUNCTIONS
 
@@ -287,7 +289,7 @@ class Command(PandasCommand):
             ))
             multiple_funding_sources = np.where(num_sources > 1, True, False)
             return (list(map(
-                    lambda x: x or self.pd.NA,
+                    lambda x: x or pd.NA,
                     [
                         '; '.join(filter(bool, x))
                         for x in zip(companies, charities, government_bodies, research_councils, eu_schemes, other)
@@ -295,9 +297,9 @@ class Command(PandasCommand):
                     multiple_funding_sources)
 
         def get_quartiles(s):
-            result = (self.pd.qcut(s, 4, labels=False, duplicates='drop') + 1) \
+            result = (pd.qcut(s, 4, labels=False, duplicates='drop') + 1) \
                 .fillna(0.0).astype(int)
-            return np.where(result == 0, self.pd.NA, result)
+            return np.where(result == 0, pd.NA, result)
 
         # FUNDING VARIABLES
 
@@ -311,7 +313,7 @@ class Command(PandasCommand):
             ['data_collection_date_planed', 'final_report_date_planed']] \
             .diff(axis='columns').iloc[:, -1]
         # NOTE: There are some studies with negative planned_duration
-        planned_duration[planned_duration <= np.timedelta64(0)] = self.pd.NA
+        planned_duration[planned_duration <= np.timedelta64(0)] = pd.NA
 
         # COPY UNCHANGED VARIABLES
 
@@ -373,11 +375,12 @@ class Command(PandasCommand):
         Uses categorical Variables in Dataframe as input.
         '''
         import numpy as np
+        import pandas as pd
 
         # CREATE DUMMIE COLUMNS FOR EASY AGGREGATIONS
 
         dummy_fields = ['state', 'risk_management_plan']
-        dummies = self.pd.get_dummies(df[dummy_fields], dummy_na=True) \
+        dummies = pd.get_dummies(df[dummy_fields], dummy_na=True) \
             .rename(columns=self.python_name_converter)
 
         # ASSIGN VARIABLES FOR STATISTICS OF REPORTED DOCUMENTS
@@ -397,13 +400,13 @@ class Command(PandasCommand):
 
         # HELPER FUNCTIONS AND VARIABLE
 
-        def set_sum(x: PandasCommand.pd.Series):
+        def set_sum(x: pd.Series):
             return len(set(x.dropna().apply(list).sum()))
 
-        def bool_sum(x: PandasCommand.pd.Series):
+        def bool_sum(x: pd.Series):
             return x.dropna().astype(float).sum()
 
-        def setify(x: PandasCommand.pd.Series):
+        def setify(x: pd.Series):
             return '; '.join(sorted(list(set(x.dropna().apply(list).sum()))))
 
         def mean_mean(x):
@@ -449,6 +452,7 @@ class Command(PandasCommand):
         '''
         Creates encoded variables for logistic regression.
         '''
+        import pandas as pd
 
         # DEFINE REFERENCE VALUES FOR VARIABLES WITH OR WITHOUT NA VALUES
         # NOTE: only used to drop references if specified
@@ -488,13 +492,13 @@ class Command(PandasCommand):
 
         # ONE-HOT ENCODE VARIABLES
 
-        encoded = self.pd.concat([
-            self.pd.get_dummies(
+        encoded = pd.concat([
+            pd.get_dummies(
                 df[dummy_without_na_drop_map.keys()],
                 prefix_sep=self.variables_seperator,
                 columns=dummy_without_na_drop_map.keys()
             ),
-            self.pd.get_dummies(
+            pd.get_dummies(
                 df[dummy_with_na_drop_map.keys()],
                 prefix_sep=self.variables_seperator,
                 columns=dummy_with_na_drop_map.keys(),
@@ -618,9 +622,8 @@ class Command(PandasCommand):
 
         Use ema_rwd_statistic instead for the new website.
         '''
-        super().run(args, opts)
-
         import numpy as np
+        import pandas as pd
         import matplotlib.pyplot as plt
         import seaborn as sns
         from statsmodels.iolib.table import SimpleTable
@@ -631,7 +634,7 @@ class Command(PandasCommand):
 
         self.logger = logging.getLogger()
         self.logger.info('Starting statistic script')
-        self.logger.info(f'Pandas {self.pd.__version__}')
+        self.logger.info(f'Pandas {pd.__version__}')
         self.logger.info('Reading input data...')
         data = self.preprocess(self.read_input())
 
@@ -671,7 +674,7 @@ class Command(PandasCommand):
              self.compare_datetime - np.timedelta64(self.results_tolerance_days, 'D'))
         ]
 
-        with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables.xlsx', engine='openpyxl') as writer:
+        with pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables.xlsx', engine='openpyxl') as writer:
 
             for df, sheet_name in [
                     (variables, 'all'),
@@ -693,7 +696,7 @@ class Command(PandasCommand):
                 (variables_two_weeks_past_final_report,
                  '_two_weeks_past_final_report')]:
 
-            with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables_frequencies{suffix}.xlsx', engine='openpyxl') as writer:
+            with pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables_frequencies{suffix}.xlsx', engine='openpyxl') as writer:
 
                 # Variables
                 df.to_excel(
@@ -714,7 +717,7 @@ class Command(PandasCommand):
                     def calculate_and_write_frequencies(df, col, writer, dropna=True, col_offset=0):
 
                         # Absolute and relative frequencies of categories
-                        frequencies = self.pd.DataFrame().assign(
+                        frequencies = pd.DataFrame().assign(
                             absolute=df.loc[:, [col]].apply(
                                 lambda x: x.value_counts(dropna=dropna)),
                             percentage=df.loc[:, [col]].apply(
@@ -741,7 +744,7 @@ class Command(PandasCommand):
                                 .groupby('split')
 
                             # Absolute and relative frequencies of subcategories
-                            overall_frequencies = self.pd.DataFrame().assign(
+                            overall_frequencies = pd.DataFrame().assign(
                                 overall_absolute=grouped_frequencies['absolute'].sum(
                                 ),
                                 overall_percentage=grouped_frequencies['percentage'].sum(
@@ -773,7 +776,7 @@ class Command(PandasCommand):
                 (variables_two_weeks_past_final_report,
                  '_two_weeks_past_final_report')]:
 
-            with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables_documents{suffix}.xlsx', engine='openpyxl') as writer:
+            with pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_variables_documents{suffix}.xlsx', engine='openpyxl') as writer:
 
                 df.to_excel(
                     writer,
@@ -885,7 +888,7 @@ class Command(PandasCommand):
                     odds_ratio = np.exp(model_result.params) \
                         .rename('odds rt').to_frame()
                     odds_ratio_data = np.round(
-                        self.pd.merge(
+                        pd.merge(
                             odds_ratio,
                             ci_odds_ratio,
                             left_index=True,
@@ -900,7 +903,7 @@ class Command(PandasCommand):
                     summary = model_result.summary()
                     summary.tables[1].extend_right(table)
 
-                    summary_df = self.pd.DataFrame(
+                    summary_df = pd.DataFrame(
                         summary.tables[1].data[1:],
                         columns=['name'] + summary.tables[1].data[0][1:]
                     )
@@ -947,7 +950,7 @@ class Command(PandasCommand):
             )
 
         self.logger.info('Generating and writing extra tables...')
-        with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_tables_frequencies.xlsx', engine='openpyxl') as writer:
+        with pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_tables_frequencies.xlsx', engine='openpyxl') as writer:
 
             for df, suffix in [
                     (variables, '_all'),
@@ -964,12 +967,12 @@ class Command(PandasCommand):
 
                 # Create Frequency table of variables for each rmp category
                 rmp = df['risk_management_plan'].fillna('Not specified')
-                result = self.pd.DataFrame()
+                result = pd.DataFrame()
 
                 for col in self.frequency_fields:
 
                     # Absolute Frequencies
-                    absolute = self.pd.crosstab(
+                    absolute = pd.crosstab(
                         df[col].fillna(str(np.nan)),
                         rmp,
                         rownames=['value'],
@@ -978,7 +981,7 @@ class Command(PandasCommand):
                     )
 
                     # Absolute Frequencies (This will drop the 'All' row automatically)
-                    relative = self.pd.crosstab(
+                    relative = pd.crosstab(
                         df[col].fillna(str(np.nan)),
                         rmp,
                         rownames=['value'],
@@ -990,7 +993,7 @@ class Command(PandasCommand):
                     combined = absolute[:-1].astype(str) + ' (' + (
                         relative * 100).round(2).astype(str) + ')'
 
-                    result = self.pd.concat([
+                    result = pd.concat([
                         result,
                         combined.assign(variable=col)
                     ])
@@ -1008,7 +1011,7 @@ class Command(PandasCommand):
                         :self.max_sheet_name_length]
                 )
 
-        with self.pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_tables_logit.xlsx', engine='openpyxl') as writer:
+        with pd.ExcelWriter(self.output_folder / f'{self.input_path.stem}_statistics_tables_logit.xlsx', engine='openpyxl') as writer:
 
             for df, suffix, logit in zip(
                 (variables_past_data_collection,
@@ -1033,7 +1036,7 @@ class Command(PandasCommand):
                             self.variables_seperator).str[1]
                     )
 
-                    df = self.pd.concat([
+                    df = pd.concat([
                         df.iloc[:, :5],
                         df.iloc[:, 7:]
                     ],
@@ -1067,19 +1070,19 @@ class Command(PandasCommand):
 
                 multivariate = transform_logit_table(logit['all'])
 
-                univariate = self.pd.DataFrame()
-                frequencies = self.pd.DataFrame()
+                univariate = pd.DataFrame()
+                frequencies = pd.DataFrame()
                 for var, logit_df in logit.items():
                     if var != 'all':
 
-                        univariate = self.pd.concat([
+                        univariate = pd.concat([
                             univariate,
                             transform_logit_table(logit_df)
                         ])
 
-                        frequencies = self.pd.concat([
+                        frequencies = pd.concat([
                             frequencies,
-                            self.pd.merge(
+                            pd.merge(
                                 df[var].fillna(str(np.nan))
                                 .value_counts()
                                 .rename('absolute').to_frame(),
@@ -1106,7 +1109,7 @@ class Command(PandasCommand):
                     + x['value'].astype(str).map(self.python_name_converter)
                 ).drop(['absolute', 'relative'], axis='columns')
 
-                result = self.pd.merge(
+                result = pd.merge(
                     univariate,
                     multivariate,
                     on='name',
@@ -1114,7 +1117,7 @@ class Command(PandasCommand):
                     suffixes=(' univariate', ' multivariate')
                 )
 
-                result = self.pd.merge(
+                result = pd.merge(
                     frequencies,
                     result,
                     on='name',
@@ -1135,7 +1138,7 @@ class Command(PandasCommand):
 
         plt.figure(dpi=300)
         date = data['registration_date'].dt.to_period('M')
-        self.pd.concat(
+        pd.concat(
             [
                 data.groupby(date).size().rename('studies'),
                 data.groupby(date).size().cumsum().rename('cumulated studies')

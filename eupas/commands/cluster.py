@@ -7,6 +7,7 @@ from scrapy.exceptions import UsageError
 from eupas.commands import PandasCommand
 
 
+# NOTE: Was only used for initial company name matching. Most values were reassigned manually.
 class Command(PandasCommand):
 
     junk_words = frozenset({
@@ -75,6 +76,7 @@ class Command(PandasCommand):
         super().run(args, opts)
 
         import numpy as np
+        import pandas as pd
         from sklearn.cluster import AffinityPropagation
 
         if len(args) == 0:
@@ -84,7 +86,7 @@ class Command(PandasCommand):
 
         self.logger = logging.getLogger()
         self.logger.info('Starting cluster script')
-        self.logger.info(f'Pandas {self.pd.__version__}')
+        self.logger.info(f'Pandas {pd.__version__}')
         self.logger.info('Reading and cleaning input data...')
 
         input = self.read_input()
@@ -138,6 +140,6 @@ class Command(PandasCommand):
         #     with open(self.output_folder / f'values_{field_name}.txt', 'w') as f:
         #         f.write('\n'.join(values))
 
-        with self.pd.ExcelWriter(self.output_folder / 'clusters.xlsx', engine='openpyxl') as writer:
+        with pd.ExcelWriter(self.output_folder / 'clusters.xlsx', engine='openpyxl') as writer:
             for field_name, df in dfs.items():
                 df.to_excel(writer, sheet_name=field_name, index=False)

@@ -65,10 +65,6 @@ class PandasCommand(ScrapyCommand):
                 "Invalid -o value, use a valid path to a folder", print_help=False)
         self.output_folder.mkdir(parents=True, exist_ok=True)
 
-    def run(self, args, opts) -> None:
-        import pandas as pd
-        PandasCommand.pd = pd
-
     def python_name_converter(self, x):
         return '_'.join([word.lower() for word in x.split(' ')]) if x[0] != '$' else x
 
