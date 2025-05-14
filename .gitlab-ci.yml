@@ -1,0 +1,145 @@
+variables:
+  # Change pip's cache directory to be inside the project directory since we can
+  # only cache local items.
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  SKIP_ITEM_COMPARISON:
+    description: "Skip item history comparison with last successfull run."
+    value: "false"
+    options:
+      - "true"
+      - "false"
+  SKIP_PYTHON_TESTING:
+    description: "Skip python code testing with tox."
+    value: "false"
+    options:
+      - "true"
+      - "false"
+  EUPAS_ENABLE_FILTER:
+    description: "Enable rmp or id filter."
+    value: "false"
+    options:
+      - "true | filter by rmp"
+      - "true | filter by id"
+      - "false"
+  EUPAS_FILTER_RMP:
+    description: "Select a rmp filter. Only applied if the rmp filter is active."
+    value: "rmp2"
+    options:
+      - "rmp1"
+      - "rmp2"
+      - "rmp3"
+      - "non_eu"
+      - "not_applicable"
+  EUPAS_FILTER_ID:
+    description: "Filter by EU PAS Register number. Only applied if the filter is active."
+    value: "e.g Eupas0000, eupas0000 or 0000 will filter out the study with EU PAS Register number 0000"
+  CODE_DIRECTORY: "EnceppScrapy"
+  OUTPUT_FOLDER: "output/"
+  OUTPUT_DIRECTORY: "$CODE_DIRECTORY/$OUTPUT_FOLDER"
+  COVERAGE_DIRECTORY: "$CODE_DIRECTORY/coverage/"
+  COVERAGE_FILE_NAME: "coverage.xml"
+
+# Pip's cache doesn't store the python packages
+# https://pip.pypa.io/en/stable/topics/caching/
+#
+# If you want to also cache the installed packages, you have to install
+# them in a virtualenv and cache it as well.
+cache:
+  key: $CI_COMMIT_REF_SLUG
+  paths:
+    - .cache/pip
+    - venv/
+    - "$CODE_DIRECTORY/.tox/"
+
+stages:
+  - test
+  - setup-run
+  - run-validate
+  - deploy
+
+.python:
+  # Official language image. Look for the different tagged releases at:
+  # https://hub.docker.com/r/library/python/tags/
+  image: python:3.8
+  before_script:
+    - python --version
+    - pip install virtualenv
+    - virtualenv venv
+    - source venv/bin/activate
+    - cd $CODE_DIRECTORY
+
+test python:
+  extends: .python
+  stage: test
+  rules:
+    - if: $SKIP_PYTHON_TESTING == "true"
+      when: never
+    - when: on_success
+  script:
+    - pip install tox
+    - tox -e py38,flake8
+  interruptible: true
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: "$COVERAGE_DIRECTORY/$COVERAGE_FILE_NAME"
+
+download compare file:
+  rules:
+    - if: $SKIP_ITEM_COMPARISON == "true"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "main"
+    - when: manual
+  variables:
+    JSON_FILE: "ema_rwd.json"
+    COMPARE_DIRECTORY: "$CODE_DIRECTORY/compare/"
+  stage: setup-run
+  script:
+    - cd $COMPARE_DIRECTORY
+    - 'curl -L --output $JSON_FILE --header "PRIVATE-TOKEN: $CI_PERSONAL_TOKEN" "https://git-ext.charite.de/api/v4/projects/169/jobs/artifacts/main/raw/EnceppScrapy/output/compare.json?job=run+spider+and+validate"'
+    - mv compare.json $JSON_FILE
+  artifacts:
+    name: "Compare"
+    paths:
+      - $COMPARE_DIRECTORY/$JSON_FILE
+    expire_in: 3 weeks
+    when: always
+
+run spider and validate:
+  extends: .python
+  stage: run-validate
+  rules:
+    - if: $EUPAS_ENABLE_FILTER == "true | filter by rmp"
+      variables:
+        FILTER_OPTIONS: "-F $EUPAS_FILTER_RMP"
+      when: never
+    - if: $EUPAS_ENABLE_FILTER == "true | filter by id"
+      variables:
+        FILTER_OPTIONS: "-F $EUPAS_FILTER_ID"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "main"
+    - when: manual
+  script:
+    - |
+      if [ "$SKIP_ITEM_COMPARISON" == "true" ]; then
+        COMPARE_OPTIONS="-s ITEMHISTORYCOMPARER_ENABLED=False"
+      fi
+    - pip install -r requirements.txt
+    - scrapy eupas $FILTER_OPTIONS $COMPARE_OPTIONS -o $OUTPUT_FOLDER/compare.json
+  artifacts:
+    name: "Output"
+    paths:
+      - $OUTPUT_DIRECTORY
+    expire_in: never
+    when: always
+  timeout: 60 minutes
+  interruptible: true
+
+deploy:
+  cache: []
+  stage: deploy
+  script: echo "Define your deployment script!"
+  environment: production
+  when: manual
