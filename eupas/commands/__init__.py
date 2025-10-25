@@ -69,18 +69,20 @@ class PandasCommand(ScrapyCommand):
         return '_'.join([word.lower() for word in x.split(' ')]) if x[0] != '$' else x
 
     def read_input(self):
+        import pandas as pd
+        
         input_data = None
         if self.input_path.suffix == '.csv':
-            input_data = self.pd.read_csv(
+            input_data = pd.read_csv(
                 self.input_path,
                 keep_default_na=False,
                 na_values=self.na_values,
                 na_filter=True
             )
         elif self.input_path.suffix == '.json':
-            input_data = self.pd.read_json(self.input_path)
+            input_data = pd.read_json(self.input_path)
         elif self.input_path.suffix == '.xlsx':
-            input_data = self.pd.read_excel(
+            input_data = pd.read_excel(
                 self.input_path,
                 keep_default_na=False,
                 na_values=self.na_values,
@@ -91,7 +93,7 @@ class PandasCommand(ScrapyCommand):
                 inplace=True
             )
         elif self.input_path.suffix == '.xml':
-            input_data = self.pd.read_xml(self.input_path)
+            input_data = pd.read_xml(self.input_path)
 
         return input_data
 
