@@ -844,13 +844,17 @@ class Command(PandasCommand):
                 right_index=True
             ).sort_index().groupby(level=0).agg(
                 number_of_studies_funded_by_biggest_sponsor=(
-                    'num_studies', 'max')
+                    'num_studies', 'max'),
+                number_of_studies_funded_by_mean_sponsor=('num_studies', 'mean')
             ),
             left_index=True,
             right_index=True
         ).assign(
             number_of_studies_funded_by_biggest_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
                 df['number_of_studies_funded_by_biggest_sponsor'], '_all'
+            ),
+            number_of_studies_funded_by_mean_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
+                df['number_of_studies_funded_by_mean_sponsor'], '_all'
             ),
             planned_duration_quartiles=lambda df: self.get_and_save_quartiles(
                 df['planned_duration'], '_all'
@@ -863,6 +867,9 @@ class Command(PandasCommand):
             number_of_studies_funded_by_biggest_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
                 df['number_of_studies_funded_by_biggest_sponsor'], '_due_protocol'
             ),
+            number_of_studies_funded_by_mean_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
+                df['number_of_studies_funded_by_mean_sponsor'], '_due_protocol'
+            ),
             planned_duration_quartiles=lambda df: self.get_and_save_quartiles(
                 df['planned_duration'], '_due_protocol'
             )
@@ -872,6 +879,9 @@ class Command(PandasCommand):
         variables_due_result = variables[variables['due_result']].assign(
             number_of_studies_funded_by_biggest_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
                 df['number_of_studies_funded_by_biggest_sponsor'], '_due_result'
+            ),
+            number_of_studies_funded_by_mean_sponsor_quartiles=lambda df: self.get_and_save_quartiles(
+                df['number_of_studies_funded_by_mean_sponsor'], '_due_result'
             ),
             planned_duration_quartiles=lambda df: self.get_and_save_quartiles(
                 df['planned_duration'], '_due_result'
