@@ -1040,7 +1040,7 @@ class Command(PandasCommand):
 
         data.loc[:, [
             'title', 'registration_date', '$UPDATED_state', 'url',
-            'has_protocol', 'has_result'
+            'has_protocol', 'has_result', 'risk_management_plan'
         ]].rename(
             columns={'$UPDATED_state': 'state'}
         ).to_json(
