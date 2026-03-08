@@ -9,7 +9,7 @@ title: "EMA Catalogue of real-world data studies scraper for: Adherence to legis
 abstract: "EMA Catalogue of real-world data studies scraper used to assess whether post-authorisation studies registered with the European Medicines Agency (EMA) adhere to legislation and recommendations to publicly post study protocols and results."
 version: 1.0.0
 date-released: "2026-02-25"
-url: "https://github.com/EU-PAS-Adherence/EU-PAS-Scraper/"
+url: "https://github.com/EU-PAS-Adherence/EU-PAS-Scraper"
 license: MIT
 keywords:
   - scraping
